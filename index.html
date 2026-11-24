@@ -575,7 +575,7 @@
           </button>
           <div style="display:flex; gap:6px; margin-top:8px;">
             <button type="button" class="btn-line" style="flex:1;" onclick="shareToLine('today')">📤 本日の結果をLINE共有</button>
-            <button type="button" class="btn-small gold" style="flex:1;" onclick="copyTodayMergeCode()">📋 短縮合算コード作成</button>
+            <button type="button" class="btn-small gold" style="flex:1;" onclick="shareTodayEncrypted()">🔒 合算データをLINEで送る</button>
           </div>
         </div>
       </section>
@@ -656,24 +656,41 @@
         <div id="daily-feedback-msg" class="feedback hidden"></div>
       </section>
 
-      <!-- 他の人のスマホからLINE経由で1日分を合算 / 全データ引き継ぎ -->
+      <!-- LINEで安全に共有（暗号化）／他端末データの合算・復元 -->
       <section class="card">
         <div class="card-header">
           <div>
-            <div class="card-title purple">📲 他端末のデータ合算・バックアップ</div>
-            <div class="card-sub">他の人が作った「短縮合算コード（M1|...）」や従来の引継コードを貼り付けて合算・復元できます</div>
+            <div class="card-title purple">🔒 暗号化LINE共有・合算／バックアップ</div>
+            <div class="card-sub">データは「共有パスワード」で暗号化してから送ります。LINEの履歴や転送で第三者の目に触れても、パスワードが無ければ中身は読めません</div>
           </div>
         </div>
 
-        <input type="text" id="merge-code-input" class="backup-input" placeholder="ここにLINEで受け取った「短縮合算コード」等を貼り付け">
-        <div style="display:flex; gap:6px; margin-top:8px;">
-          <button type="button" class="btn-main green-mode" style="margin-top:0; padding:9px; font-size:12px;" onclick="importMergeOrBackupCode()">
-            📥 コードを読み込んで合算・復元する
-          </button>
-          <button type="button" class="btn-small" onclick="exportFullLeagueBackup()">
-            全データ引継コード作成
-          </button>
+        <!-- 共有パスワード -->
+        <div style="font-size:11px; color:#94a3b8; font-weight:800; margin-bottom:4px;">🔑 共有パスワード（メンバー全員で同じものを設定・4文字以上）</div>
+        <div style="display:flex; gap:6px;">
+          <input type="password" id="share-pw-input" class="backup-input" style="flex:1;" autocomplete="off" placeholder="例: 仲間内だけの合言葉（LINE以外の場で共有推奨）">
+          <button type="button" class="btn-small gold" onclick="saveSharePassword()">保存</button>
         </div>
+        <div class="card-sub" style="margin-top:4px;">※パスワードはこの端末の中だけに保存され、LINEには送られません</div>
+
+        <!-- 送る -->
+        <div style="font-size:11px; color:#94a3b8; font-weight:800; margin:12px 0 4px;">📤 送る</div>
+        <div style="display:flex; gap:6px; flex-wrap:wrap;">
+          <button type="button" class="btn-line" style="flex:1; min-width:150px;" onclick="shareTodayEncrypted()">🔒 本日の合算データをLINEで送る</button>
+          <button type="button" class="btn-small gold" style="flex:1; min-width:150px;" onclick="exportFullEncryptedFile()">🗂 全データを暗号化ファイルで送る</button>
+        </div>
+
+        <!-- 受け取る -->
+        <div style="font-size:11px; color:#94a3b8; font-weight:800; margin:12px 0 4px;">📥 受け取る（LINEのリンクを開けば自動で読み込み画面になります）</div>
+        <input type="text" id="merge-code-input" class="backup-input" placeholder="リンク／暗号化コード（MZ1.…）／旧コードをここに貼り付け">
+        <div style="display:flex; gap:6px; margin-top:8px; flex-wrap:wrap;">
+          <button type="button" class="btn-main green-mode" style="margin-top:0; padding:9px; font-size:12px; flex:2; min-width:160px;" onclick="importMergeOrBackupCode()">
+            📥 読み込んで合算・復元する
+          </button>
+          <button type="button" class="btn-small" style="flex:1;" onclick="document.getElementById('share-file-input').click()">📎 ファイルから</button>
+          <input type="file" id="share-file-input" accept=".txt,.mzk,text/plain" class="hidden" onchange="importFromFile(this)">
+        </div>
+        <div id="share-feedback-msg" class="feedback hidden"></div>
       </section>
 
       <!-- 日別の蓄積履歴一覧（編集・削除可能） -->
@@ -1574,127 +1591,355 @@
   }
 
   // ==================================================
-  // 短縮合算コード（M1|YYMMDD|半荘数|idx:pt:games(:yk),...）
+  // 暗号化共有（AES-GCM-256 + PBKDF2-SHA256）／ 旧コード互換
+  //   形式: "MZ1." + base64url( flag(1) | salt(16) | iv(12) | 暗号文 )
   // ==================================================
-  function copyTodayMergeCode() {
+  const STORAGE_KEY_SHARE_PW = 'maruyama_share_pw_v1';
+  const SHARE_PBKDF2_ITER = 150000;
+
+  function showShareFeedback(msg, isError) {
+    const el = document.getElementById('share-feedback-msg');
+    if (!el) return;
+    el.textContent = msg;
+    el.className = 'feedback ' + (isError ? 'banner-err' : 'banner-ok');
+    clearTimeout(el._t);
+    el._t = setTimeout(() => el.classList.add('hidden'), 6000);
+  }
+
+  function b64uEncode(bytes) {
+    let s = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) {
+      s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    }
+    return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+  function b64uDecode(str) {
+    str = str.replace(/-/g, '+').replace(/_/g, '/');
+    while (str.length % 4) str += '=';
+    const bin = atob(str);
+    const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  }
+  async function streamToBytes(stream) {
+    return new Uint8Array(await new Response(stream).arrayBuffer());
+  }
+  async function compressBytes(bytes) {
+    if (typeof CompressionStream === 'undefined') return { flag: 0, data: bytes };
+    try {
+      const s = new Blob([bytes]).stream().pipeThrough(new CompressionStream('deflate-raw'));
+      return { flag: 1, data: await streamToBytes(s) };
+    } catch (e) { return { flag: 0, data: bytes }; }
+  }
+  async function decompressBytes(bytes) {
+    const s = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+    return streamToBytes(s);
+  }
+  async function deriveShareKey(pw, salt) {
+    const km = await crypto.subtle.importKey('raw', new TextEncoder().encode(pw), 'PBKDF2', false, ['deriveKey']);
+    return crypto.subtle.deriveKey(
+      { name: 'PBKDF2', salt: salt, iterations: SHARE_PBKDF2_ITER, hash: 'SHA-256' },
+      km, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']
+    );
+  }
+  async function encryptPayload(obj, pw) {
+    if (!window.crypto || !crypto.subtle) throw new Error('NO_CRYPTO');
+    const raw = new TextEncoder().encode(JSON.stringify(obj));
+    const { flag, data } = await compressBytes(raw);
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const key = await deriveShareKey(pw, salt);
+    const ct = new Uint8Array(await crypto.subtle.encrypt(
+      { name: 'AES-GCM', iv: iv, additionalData: new Uint8Array([flag]) }, key, data));
+    const out = new Uint8Array(1 + 16 + 12 + ct.length);
+    out[0] = flag; out.set(salt, 1); out.set(iv, 17); out.set(ct, 29);
+    return 'MZ1.' + b64uEncode(out);
+  }
+  async function decryptPayload(code, pw) {
+    if (!window.crypto || !crypto.subtle) throw new Error('NO_CRYPTO');
+    const buf = b64uDecode(code.slice(4));
+    if (buf.length < 30) throw new Error('BAD_FORMAT');
+    const flag = buf[0], salt = buf.slice(1, 17), iv = buf.slice(17, 29), ct = buf.slice(29);
+    const key = await deriveShareKey(pw, salt);
+    let plain;
+    try {
+      plain = new Uint8Array(await crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv: iv, additionalData: new Uint8Array([flag]) }, key, ct));
+    } catch (e) { throw new Error('WRONG_PW'); }
+    if (flag === 1) plain = await decompressBytes(plain);
+    return JSON.parse(new TextDecoder().decode(plain));
+  }
+
+  // ---- 共有パスワード管理（この端末のlocalStorageにのみ保存） ----
+  function getSharePassword() {
+    const typed = (document.getElementById('share-pw-input').value || '').trim();
+    let pw = typed;
+    if (!pw) { try { pw = localStorage.getItem(STORAGE_KEY_SHARE_PW) || ''; } catch (e) {} }
+    return pw.length >= 4 ? pw : null;
+  }
+  function saveSharePassword() {
+    const pw = (document.getElementById('share-pw-input').value || '').trim();
+    if (pw.length < 4) { showShareFeedback('⚠️ パスワードは4文字以上で入力してください', true); return; }
+    try { localStorage.setItem(STORAGE_KEY_SHARE_PW, pw); } catch (e) {}
+    showShareFeedback('✅ 共有パスワードを保存しました（この端末内のみ）', false);
+  }
+  function rememberPasswordIfTyped(pw) {
+    try { localStorage.setItem(STORAGE_KEY_SHARE_PW, pw); } catch (e) {}
+    const inp = document.getElementById('share-pw-input');
+    if (inp) inp.value = '';
+  }
+  function needPasswordNotice() {
+    switchMainPage('league');
+    showShareFeedback('⚠️ 先に「共有パスワード」を入力して保存してください（メンバー全員で同じもの）', true);
+    const inp = document.getElementById('share-pw-input');
+    if (inp) { inp.focus(); inp.scrollIntoView({ block: 'center' }); }
+  }
+  function cryptoErrorMessage(e) {
+    if (e && e.message === 'NO_CRYPTO') return '⚠️ この環境では暗号化が使えません（https のページで開いてください）';
+    if (e && e.message === 'WRONG_PW') return '⚠️ パスワードが違うか、データが壊れています';
+    return '⚠️ コードの読み込みに失敗しました';
+  }
+
+  // ---- LINEへ送信 ----
+  async function sendToLine(text) {
+    if (navigator.share) {
+      try { await navigator.share({ text: text }); return; }
+      catch (e) { if (e && e.name === 'AbortError') return; }
+    }
+    try { if (navigator.clipboard) await navigator.clipboard.writeText(text); } catch (e) {}
+    window.open('https://line.me/R/share?text=' + encodeURIComponent(text), '_blank');
+    showShareFeedback('📋 コピーもしました。LINEが開かない場合はトークに貼り付けてください', false);
+  }
+  function buildShareUrl(code) {
+    if (/^https?:$/.test(location.protocol)) return location.origin + location.pathname + '#mz=' + code;
+    return null;
+  }
+  function newShareId() {
+    return Array.from(crypto.getRandomValues(new Uint8Array(6))).map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  // ---- 本日分を暗号化してLINE共有 ----
+  async function shareTodayEncrypted() {
     if (historyRecords.length === 0) {
-      showFeedback('⚠️ 本日の履歴が0件のため合算コードを作成できません。', true);
+      showFeedback('⚠️ 本日の履歴が0件のため共有できません。', true);
       return;
     }
+    const pw = getSharePassword();
+    if (!pw) { needPasswordNotice(); return; }
     const statsMap = getTodayAggregatedStats();
-    const yymmdd = getTodayDateString().replace(/-/g, '').slice(2); // 例: 261124
-    const parts = [];
-
-    PLAYERS.forEach((name, idx) => {
+    const members = {};
+    PLAYERS.forEach(name => {
       const st = statsMap[name];
       if (st && (st.games > 0 || st.totalPt !== 0 || st.yakuman > 0)) {
-        const ptStr = Number.isInteger(st.totalPt) ? String(st.totalPt) : st.totalPt.toFixed(1);
-        if (st.yakuman > 0) {
-          parts.push(`${idx}:${ptStr}:${st.games}:${st.yakuman}`);
-        } else {
-          parts.push(`${idx}:${ptStr}:${st.games}`);
-        }
+        members[name] = { pt: roundToOneDecimal(st.totalPt), games: st.games, yakuman: st.yakuman || 0 };
       }
     });
-
-    // 短縮コード生成（約40〜50文字）
-    const shortCode = `M1|${yymmdd}|${historyRecords.length}|${parts.join(',')}`;
-    copyTextWithMessage(shortCode, `📋 短縮合算コードをコピーしました！（${shortCode.length}文字）LINEで送ってください`);
-  }
-
-  function exportFullLeagueBackup() {
+    const date = getTodayDateString();
     const payload = {
-      type: 'MARUYAMA_FULL_BACKUP',
-      today: historyRecords,
-      sessions: leagueSessions
+      type: 'MARUYAMA_DAILY_MERGE', sid: newShareId(), date: date,
+      memo: `他端末からの合算 (${historyRecords.length}半荘)`, members: members
     };
-    const code = btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
-    document.getElementById('merge-code-input').value = code;
-    copyTextWithMessage(code, '📋 全データ引継コードをコピーしました！');
+    try {
+      const code = await encryptPayload(payload, pw);
+      rememberPasswordIfTyped(pw);
+      const url = buildShareUrl(code);
+      const text = `🀄丸山リーグ ${date} の合算データ（🔒暗号化済み）\n` +
+        (url ? `↓リンクを開いて共有パスワードで読み込み\n${url}`
+             : `↓アプリの「受け取る」欄に貼り付けて読み込み\n${code}`);
+      await sendToLine(text);
+    } catch (e) {
+      const msg = cryptoErrorMessage(e);
+      showFeedback(msg, true); showShareFeedback(msg, true);
+    }
   }
 
-  function importMergeOrBackupCode() {
-    const raw = document.getElementById('merge-code-input').value.trim();
+  // ---- 全データを暗号化ファイルで共有 ----
+  async function exportFullEncryptedFile() {
+    const pw = getSharePassword();
+    if (!pw) { needPasswordNotice(); return; }
+    try {
+      const code = await encryptPayload(
+        { type: 'MARUYAMA_FULL_BACKUP', today: historyRecords, sessions: leagueSessions }, pw);
+      rememberPasswordIfTyped(pw);
+      const fname = `maruyama_league_backup_${getTodayDateString()}.txt`;
+      const file = new File([code], fname, { type: 'text/plain' });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        try {
+          await navigator.share({ files: [file], title: '丸山リーグ 暗号化バックアップ' });
+          showShareFeedback('✅ 暗号化ファイルを共有しました（開くにはパスワードが必要です）', false);
+          return;
+        } catch (e) { if (e && e.name === 'AbortError') return; }
+      }
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(file);
+      a.download = fname;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+      showShareFeedback('💾 暗号化ファイルを保存しました。LINEのトークに添付して送ってください', false);
+    } catch (e) {
+      showShareFeedback(cryptoErrorMessage(e), true);
+    }
+  }
+
+  function importFromFile(inputEl) {
+    const f = inputEl.files && inputEl.files[0];
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      document.getElementById('merge-code-input').value = String(reader.result || '').trim();
+      importMergeOrBackupCode();
+    };
+    reader.readAsText(f);
+    inputEl.value = '';
+  }
+
+  // ---- 受け取ったデータの反映 ----
+  function sanitizeMembers(members) {
+    const out = {};
+    Object.keys(members || {}).forEach(name => {
+      const m = members[name] || {};
+      out[String(name).slice(0, 20)] = {
+        pt: roundToOneDecimal(parseFloat(m.pt) || 0),
+        games: parseInt(m.games, 10) || 0,
+        yakuman: parseInt(m.yakuman, 10) || 0
+      };
+    });
+    return out;
+  }
+
+  // 戻り値: 'ok' | 'cancel' | 'invalid'
+  function applyPayload(decoded, opts) {
+    opts = opts || {};
+    if (decoded && decoded.type === 'MARUYAMA_DAILY_MERGE' && decoded.members) {
+      const dup = decoded.sid && leagueSessions.some(s => s.sid === decoded.sid);
+      if (dup) {
+        if (!confirm('このデータは既に読み込み済みです。もう一度追加しますか？')) return 'cancel';
+      } else if (opts.fromLink) {
+        if (!confirm(`${decoded.date || ''} の合算データを全体累計に追加しますか？`)) return 'cancel';
+      }
+      const sess = {
+        id: Date.now(),
+        date: decoded.date || getTodayDateString(),
+        memo: decoded.memo || '他端末合算分',
+        members: sanitizeMembers(decoded.members)
+      };
+      if (decoded.sid) sess.sid = decoded.sid;
+      leagueSessions.unshift(sess);
+      persistAll();
+      renderLeagueSection();
+      return 'ok';
+    }
+    if (decoded && decoded.type === 'MARUYAMA_FULL_BACKUP') {
+      if (!confirm('この端末の現在のデータを、受け取ったデータで【上書き】して復元します。よろしいですか？')) return 'cancel';
+      if (Array.isArray(decoded.today)) historyRecords = decoded.today;
+      if (Array.isArray(decoded.sessions)) leagueSessions = decoded.sessions;
+      persistAll();
+      renderHistorySection();
+      renderLeagueSection();
+      return 'ok';
+    }
+    return 'invalid';
+  }
+
+  async function importMergeOrBackupCode(opts) {
+    opts = opts || {};
+    const inputEl = document.getElementById('merge-code-input');
+    let raw = inputEl.value.trim();
     if (!raw) {
-      showDailyFeedback('⚠️ コードを入力欄に貼り付けてください。', true);
+      showShareFeedback('⚠️ コードまたはリンクを入力欄に貼り付けてください。', true);
       return;
     }
 
-    // 1. 新形式の短縮合算コード（M1|YYMMDD|半荘数|...）を判定
+    // 1. 暗号化コード（リンク内 #mz=MZ1.… も可）
+    const enc = raw.match(/MZ1\.[A-Za-z0-9_-]+/);
+    if (enc) {
+      const pw = getSharePassword();
+      if (!pw) { needPasswordNotice(); return; }
+      let decoded;
+      try {
+        decoded = await decryptPayload(enc[0], pw);
+      } catch (e) {
+        showShareFeedback(cryptoErrorMessage(e), true);
+        return;
+      }
+      const r = applyPayload(decoded, opts);
+      if (r === 'ok') {
+        rememberPasswordIfTyped(pw);
+        inputEl.value = '';
+        showShareFeedback(decoded.type === 'MARUYAMA_FULL_BACKUP' ? '✅ 全データを復元しました！' : '✅ 合算データを全体累計に追加しました！', false);
+      } else if (r === 'cancel') {
+        showShareFeedback('読み込みをキャンセルしました', false);
+      } else {
+        showShareFeedback('⚠️ データの形式が正しくありません。', true);
+      }
+      return;
+    }
+
+    // 2. 旧形式の短縮合算コード（M1|YYMMDD|半荘数|...）
     if (raw.startsWith('M1|')) {
       try {
         const segs = raw.split('|');
         if (segs.length < 4) throw new Error('invalid');
         const yymmdd = segs[1];
         const totalHanchan = parseInt(segs[2], 10) || 0;
-        const memberStr = segs[3];
-
         let dateFormatted = getTodayDateString();
         if (/^\d{6}$/.test(yymmdd)) {
           dateFormatted = `20${yymmdd.slice(0,2)}-${yymmdd.slice(2,4)}-${yymmdd.slice(4,6)}`;
         }
-
         const members = {};
-        memberStr.split(',').forEach(entry => {
+        segs[3].split(',').forEach(entry => {
           if (!entry) return;
           const cols = entry.split(':');
           if (cols.length < 3) return;
           const idx = parseInt(cols[0], 10);
           const name = (!isNaN(idx) && PLAYERS[idx]) ? PLAYERS[idx] : cols[0];
-          const pt = roundToOneDecimal(parseFloat(cols[1]) || 0);
-          const games = parseInt(cols[2], 10) || 0;
-          const yakuman = cols[3] ? (parseInt(cols[3], 10) || 0) : 0;
-          members[name] = { pt, games, yakuman };
+          members[name] = {
+            pt: roundToOneDecimal(parseFloat(cols[1]) || 0),
+            games: parseInt(cols[2], 10) || 0,
+            yakuman: cols[3] ? (parseInt(cols[3], 10) || 0) : 0
+          };
         });
-
         if (Object.keys(members).length === 0) throw new Error('empty');
-
-        leagueSessions.unshift({
-          id: Date.now(),
-          date: dateFormatted,
-          memo: `他端末からの合算 (${totalHanchan}半荘)`,
-          members: members
-        });
+        leagueSessions.unshift({ id: Date.now(), date: dateFormatted, memo: `他端末からの合算 (${totalHanchan}半荘)`, members: members });
         persistAll();
-        document.getElementById('merge-code-input').value = '';
+        inputEl.value = '';
         renderLeagueSection();
-        showDailyFeedback('✅ 短縮合算コードを読み込み、全体累計へ追加しました！', false);
-        return;
+        showShareFeedback('✅ 旧形式の短縮コードを読み込み、全体累計へ追加しました！', false);
       } catch (e) {
-        showDailyFeedback('⚠️ 短縮コードの形式が正しくありません。', true);
-        return;
+        showShareFeedback('⚠️ 短縮コードの形式が正しくありません。', true);
       }
+      return;
     }
 
-    // 2. 従来のBase64形式（合算コード・全データ引継コード）との互換読み込み
+    // 3. 旧形式のBase64引継コード（互換）
     try {
       const decoded = JSON.parse(decodeURIComponent(escape(atob(raw))));
-      if (decoded && decoded.type === 'MARUYAMA_DAILY_MERGE' && decoded.members) {
-        leagueSessions.unshift({
-          id: Date.now(),
-          date: decoded.date || getTodayDateString(),
-          memo: decoded.memo || '他端末合算分',
-          members: decoded.members
-        });
-        persistAll();
-        document.getElementById('merge-code-input').value = '';
-        renderLeagueSection();
-        showDailyFeedback('✅ 他の端末の1日分データを全体累計に合算しました！', false);
-      } else if (decoded && decoded.type === 'MARUYAMA_FULL_BACKUP') {
-        if (Array.isArray(decoded.today)) historyRecords = decoded.today;
-        if (Array.isArray(decoded.sessions)) leagueSessions = decoded.sessions;
-        persistAll();
-        document.getElementById('merge-code-input').value = '';
-        renderHistorySection();
-        renderLeagueSection();
-        showDailyFeedback('✅ 全データを復元しました！', false);
-      } else {
-        showDailyFeedback('⚠️ コードの形式が正しくありません。', true);
-      }
+      const r = applyPayload(decoded, opts);
+      if (r === 'ok') { inputEl.value = ''; showShareFeedback('✅ 旧形式のコードを読み込みました！', false); }
+      else if (r === 'cancel') showShareFeedback('読み込みをキャンセルしました', false);
+      else showShareFeedback('⚠️ コードの形式が正しくありません。', true);
     } catch (e) {
-      showDailyFeedback('⚠️ コードの読み込みに失敗しました。', true);
+      showShareFeedback('⚠️ コードの読み込みに失敗しました。', true);
     }
   }
+
+  // ---- LINEのリンク（#mz=...）から開いた場合の自動読み込み ----
+  async function handleIncomingLink() {
+    const m = location.hash.match(/^#mz=(MZ1\.[A-Za-z0-9_-]+)/);
+    if (!m) return;
+    const code = m[1];
+    try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
+    switchMainPage('league');
+    document.getElementById('merge-code-input').value = code;
+    if (getSharePassword()) {
+      await importMergeOrBackupCode({ fromLink: true });
+    } else {
+      showShareFeedback('🔒 暗号化データを受け取りました。共有パスワードを入力して「読み込んで合算・復元する」を押してください', false);
+      const inp = document.getElementById('share-pw-input');
+      if (inp) inp.focus();
+    }
+  }
+  window.addEventListener('hashchange', handleIncomingLink);
 
   function shareToLine(mode) {
     let text = '';
@@ -1771,6 +2016,7 @@
     setGameMode(4);
     renderHistorySection();
     renderLeagueSection();
+    handleIncomingLink();
   })();
 </script>
 </body>
