@@ -1,0 +1,1724 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<!-- 検索エンジンに載らない仲間内専用設定 -->
+<meta name="robots" content="noindex, nofollow">
+<!-- スマホのホーム画面に追加した際にアプリのように動作させる設定 -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="丸山リーグ">
+<meta name="theme-color" content="#07261c">
+<!-- LINEでURLを共有した際のプレビュー表示 -->
+<meta property="og:title" content="丸山リーグ点数計算">
+<meta property="og:description" content="4人麻雀・3人麻雀のポイント計算、役満カウント、全体累計管理（データはお使いの端末内に保存されます）">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%2310b981'/><text x='50' y='68' font-size='56' font-weight='900' text-anchor='middle' fill='white'>丸</text></svg>">
+<link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%2310b981'/><text x='50' y='68' font-size='56' font-weight='900' text-anchor='middle' fill='white'>丸</text></svg>">
+<title>丸山リーグ点数計算</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", sans-serif;
+    background-color: #061f17;
+    color: #f8fafc;
+    padding-bottom: 50px;
+    line-height: 1.4;
+  }
+
+  /* スマホで片手操作しやすい中央カード型レイアウト */
+  .app-shell {
+    max-width: 440px;
+    margin: 0 auto;
+    padding: 0 12px;
+  }
+
+  /* ヘッダー */
+  .header {
+    position: sticky; top: 0; z-index: 30;
+    background: rgba(7, 38, 28, 0.96);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid #115e46;
+    padding: 10px 12px;
+  }
+  .header-inner {
+    max-width: 440px; margin: 0 auto;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .header-title { display: flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 900; }
+  .logo-badge {
+    width: 28px; height: 28px; border-radius: 7px;
+    background: linear-gradient(135deg, #10b981, #047857);
+    color: #fff; font-weight: 900; font-size: 15px;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+  }
+
+  /* ページ切替ナビ（①本日の対局 / ②全体累計・日別追加） */
+  .main-nav {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 6px;
+    background: #03120d; padding: 5px; border-radius: 12px;
+    border: 1px solid #134e3a; margin: 12px 0;
+  }
+  .nav-page-btn {
+    border: none; background: transparent; color: #94a3b8;
+    padding: 10px 6px; border-radius: 9px; font-size: 13px; font-weight: 900;
+    cursor: pointer; transition: 0.15s;
+  }
+  .nav-page-btn.active {
+    background: linear-gradient(135deg, #10b981, #059669);
+    color: #03120d;
+    box-shadow: 0 2px 8px rgba(16, 185, 129, 0.35);
+  }
+
+  /* 4麻/3麻切替＆ルールバー */
+  .top-bar {
+    display: flex; align-items: center; justify-content: space-between;
+    background: #0a2e22; border: 1px solid #134e3a; border-radius: 11px;
+    padding: 8px 10px; margin-bottom: 12px; gap: 8px;
+  }
+  .mode-switch {
+    display: flex; background: #03120d; padding: 3px; border-radius: 9px; border: 1px solid #115e46; flex-shrink: 0;
+  }
+  .mode-btn {
+    border: none; background: transparent; color: #94a3b8;
+    padding: 5px 10px; border-radius: 6px; font-size: 11px; font-weight: 800; cursor: pointer;
+  }
+  .mode-btn.active { background: #f59e0b; color: #061f17; font-weight: 900; }
+  .rule-val { font-family: monospace; font-size: 11px; font-weight: 700; color: #cbd5e1; text-align: right; }
+
+  /* カード共通 */
+  .card {
+    background: #0c3124; border: 1px solid #16654b; border-radius: 14px;
+    padding: 14px 12px; box-shadow: 0 4px 14px rgba(0,0,0,0.4);
+    margin-bottom: 14px;
+  }
+  .card.editing-mode {
+    border: 2px solid #38bdf8;
+    box-shadow: 0 0 16px rgba(56, 189, 248, 0.25);
+  }
+  .card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; gap: 6px; }
+  .card-title { font-size: 14px; font-weight: 900; color: #fbbf24; display: flex; align-items: center; gap: 6px; }
+  .card-title.green { color: #34d399; }
+  .card-title.blue { color: #38bdf8; }
+  .card-title.purple { color: #c084fc; }
+  .card-sub { font-size: 11px; color: #94a3b8; margin-top: 2px; }
+
+  .btn-small {
+    background: #1e293b; color: #cbd5e1; border: 1px solid #334155;
+    padding: 5px 9px; border-radius: 8px; font-size: 11px; font-weight: 800; cursor: pointer; flex-shrink: 0;
+  }
+  .btn-small.edit { background: #0c4a6e; color: #7dd3fc; border-color: #0284c7; }
+  .btn-small.danger { background: #4c0519; color: #fda4af; border-color: #881337; }
+  .btn-small.gold { background: #451a03; color: #fcd34d; border-color: #d97706; }
+
+  /* 各順位の入力行 */
+  .rows-wrap { display: flex; flex-direction: column; gap: 8px; }
+  .rank-row {
+    background: rgba(0,0,0,0.35); border: 1px solid #134e3a; border-radius: 11px;
+    padding: 8px; display: flex; flex-direction: column; gap: 6px;
+  }
+  .rank-row-top {
+    display: flex; align-items: center; gap: 6px;
+  }
+  .rank-info { width: 42px; text-align: center; flex-shrink: 0; }
+  .rank-badge {
+    display: block; font-size: 11px; font-weight: 900; padding: 2px 0; border-radius: 5px;
+    border: 1px solid rgba(255,255,255,0.2);
+  }
+  .r1 { background: rgba(245,158,11,0.25); color: #fcd34d; border-color: #f59e0b; }
+  .r2 { background: rgba(148,163,184,0.25); color: #e2e8f0; border-color: #94a3b8; }
+  .r3 { background: rgba(180,83,9,0.3); color: #fdba74; border-color: #d97706; }
+  .r4 { background: rgba(136,19,55,0.4); color: #fda4af; border-color: #e11d48; }
+  .rank-offset { font-size: 10px; color: #94a3b8; font-family: monospace; display: block; margin-top: 1px; }
+
+  .player-select {
+    background: #062219; color: #fff; border: 1px solid #10b981; border-radius: 8px;
+    padding: 8px 4px; font-size: 12px; font-weight: 800; width: 92px; flex-shrink: 0;
+  }
+  .player-select.empty { color: #94a3b8; border-color: #f59e0b; }
+
+  .score-input-wrap { position: relative; flex: 1; min-width: 0; display: flex; align-items: center; }
+  .sign-btn {
+    position: absolute; left: 4px; z-index: 2;
+    background: #1e293b; color: #e2e8f0; border: 1px solid #475569;
+    border-radius: 5px; padding: 4px 6px; font-size: 12px; font-weight: 800; cursor: pointer;
+  }
+  .sign-btn:active { background: #334155; transform: scale(0.95); }
+  .score-input {
+    width: 100%; background: #041811; border: 1px solid #059669; border-radius: 8px;
+    padding: 8px 6px 8px 30px; text-align: right; color: #fff;
+    font-family: monospace; font-size: 16px; font-weight: 800;
+  }
+  .score-input:focus { outline: 2px solid #34d399; }
+
+  .row-result { width: 74px; text-align: right; flex-shrink: 0; }
+  .res-pt { font-family: monospace; font-size: 15px; font-weight: 900; line-height: 1.1; }
+  .res-sub { font-family: monospace; font-size: 10px; color: #94a3b8; margin-top: 2px; }
+
+  /* 役満バッジボタン（各行の下段） */
+  .rank-row-bottom {
+    display: flex; align-items: center; justify-content: space-between;
+    padding-top: 4px; border-top: 1px dashed rgba(255,255,255,0.08);
+  }
+  .yakuman-toggle {
+    display: inline-flex; align-items: center; gap: 4px;
+    background: #07231a; color: #64748b; border: 1px solid #134e3a;
+    border-radius: 20px; padding: 3px 10px; font-size: 11px; font-weight: 800; cursor: pointer;
+    transition: 0.15s;
+  }
+  .yakuman-toggle.active {
+    background: linear-gradient(90deg, #b45309, #d97706);
+    color: #fff; border-color: #fde047;
+    box-shadow: 0 0 10px rgba(245, 158, 11, 0.5);
+  }
+  .yakuman-count-ctrl {
+    display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: #fcd34d; font-weight: 800;
+  }
+  .yk-step-btn {
+    background: #451a03; color: #fcd34d; border: 1px solid #f59e0b;
+    border-radius: 5px; width: 22px; height: 22px; font-weight: 900; cursor: pointer;
+  }
+
+  /* 役満バッジ・出禁バッジ表示用 */
+  .yk-badge {
+    display: inline-block; background: linear-gradient(90deg, #dc2626, #d97706);
+    color: #fff; font-size: 10px; font-weight: 900; padding: 1px 6px;
+    border-radius: 10px; border: 1px solid #fde047; margin-left: 4px;
+    vertical-align: middle;
+  }
+  .ban-badge {
+    display: inline-block; background: linear-gradient(90deg, #991b1b, #450a0a);
+    color: #fecaca; font-size: 10px; font-weight: 900; padding: 1px 6px;
+    border-radius: 10px; border: 1px solid #f87171; margin-left: 5px;
+    vertical-align: middle;
+    box-shadow: 0 0 8px rgba(248, 113, 113, 0.45);
+  }
+
+  .pt-plus { color: #34d399; }
+  .pt-minus { color: #fb7185; }
+  .pt-zero { color: #fcd34d; }
+  .pt-none { color: #64748b; }
+
+  /* 警告・バナー */
+  .banner { margin-top: 10px; padding: 10px; border-radius: 10px; font-size: 12px; }
+  .banner-ok { background: #064e3b; border: 1px solid #10b981; color: #a7f3d0; font-weight: 700; display: flex; justify-content: space-between; }
+  .banner-err { background: #4c0519; border: 2px solid #f43f5e; color: #ffe4e6; }
+  .banner-warn { background: #451a03; border: 1px solid #f59e0b; color: #fde68a; margin-bottom: 8px; padding: 7px 10px; border-radius: 8px; font-size: 12px; font-weight: 700; }
+  .banner-edit { background: #0c4a6e; border: 1px solid #38bdf8; color: #e0f2fe; margin-bottom: 10px; padding: 8px 10px; border-radius: 8px; font-size: 12px; font-weight: 700; display: flex; justify-content: space-between; align-items: center; }
+  .err-title { font-size: 13px; font-weight: 900; color: #fda4af; margin-bottom: 3px; }
+  .err-diff { display: inline-block; margin-top: 4px; background: rgba(0,0,0,0.4); padding: 3px 8px; border-radius: 5px; font-family: monospace; font-weight: 800; color: #fda4af; }
+
+  .sum-footer {
+    margin-top: 10px; padding-top: 8px; border-top: 1px solid #134e3a;
+    display: flex; justify-content: space-between; font-size: 12px; color: #cbd5e1;
+  }
+  .btn-row { display: flex; gap: 8px; margin-top: 10px; }
+  .btn-main {
+    flex: 1; padding: 12px; border: none; border-radius: 10px;
+    background: linear-gradient(90deg, #f59e0b, #d97706); color: #061f17;
+    font-size: 14px; font-weight: 900; cursor: pointer;
+    box-shadow: 0 4px 10px rgba(245,158,11,0.3);
+  }
+  .btn-main.update-mode {
+    background: linear-gradient(90deg, #38bdf8, #0284c7); color: #041811;
+  }
+  .btn-main.green-mode {
+    background: linear-gradient(90deg, #10b981, #059669); color: #03120d;
+  }
+  .btn-main:disabled {
+    background: #1e293b; color: #64748b; box-shadow: none; cursor: not-allowed; border: 1px solid #334155;
+  }
+  .btn-cancel {
+    padding: 12px 14px; border: 1px solid #475569; border-radius: 10px;
+    background: #1e293b; color: #e2e8f0; font-size: 12px; font-weight: 800; cursor: pointer;
+  }
+  .feedback { margin-top: 8px; padding: 8px; border-radius: 8px; text-align: center; font-size: 12px; font-weight: 700; }
+
+  /* タブ切替 */
+  .tabs { display: flex; gap: 4px; background: #041811; padding: 4px; border-radius: 10px; margin-bottom: 10px; border: 1px solid #134e3a; }
+  .tab-btn {
+    flex: 1; border: none; background: transparent; color: #94a3b8;
+    padding: 7px 4px; border-radius: 7px; font-size: 11px; font-weight: 800; cursor: pointer;
+  }
+  .tab-btn.active { background: #10b981; color: #041811; }
+
+  /* テーブル共通 */
+  .table-wrap { overflow-x: auto; border: 1px solid #134e3a; border-radius: 10px; background: rgba(0,0,0,0.35); }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th, td { padding: 8px 6px; border-bottom: 1px solid #0f3d2e; text-align: right; white-space: nowrap; }
+  th { background: #07261c; color: #94a3b8; font-size: 11px; font-weight: 700; }
+  th:first-child, td:first-child { text-align: left; position: sticky; left: 0; background: #08291e; z-index: 1; }
+
+  /* 対局履歴カード */
+  .hist-list { display: flex; flex-direction: column; gap: 8px; max-height: 400px; overflow-y: auto; }
+  .hist-card { background: rgba(0,0,0,0.4); border: 1px solid #16654b; border-radius: 10px; padding: 9px; }
+  .hist-card.editing-target { border: 2px solid #38bdf8; background: rgba(12, 74, 110, 0.25); }
+  .hist-head { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #134e3a; padding-bottom: 5px; margin-bottom: 6px; font-size: 11px; }
+  .hist-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+  .hist-item { background: rgba(255,255,255,0.04); padding: 5px 7px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; font-size: 11px; }
+
+  /* 全体累計ページ・日別入力フォーム（±ボタン付き） */
+  .daily-input-grid { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+  .daily-player-row {
+    display: grid; grid-template-columns: 74px 1fr 52px 58px; gap: 5px; align-items: center;
+    background: rgba(0,0,0,0.3); border: 1px solid #134e3a; border-radius: 8px; padding: 6px 7px;
+  }
+  .daily-player-name { font-size: 12px; font-weight: 900; color: #fff; }
+  .daily-pt-wrap { position: relative; display: flex; align-items: center; min-width: 0; }
+  .daily-sign-btn {
+    position: absolute; left: 3px; z-index: 2;
+    background: #1e293b; color: #e2e8f0; border: 1px solid #475569;
+    border-radius: 5px; padding: 3px 6px; font-size: 11px; font-weight: 900; cursor: pointer;
+  }
+  .daily-sign-btn:active { background: #334155; transform: scale(0.95); }
+  .mini-input {
+    width: 100%; background: #041811; border: 1px solid #059669; border-radius: 6px;
+    padding: 6px 5px; text-align: right; color: #fff; font-family: monospace; font-size: 13px; font-weight: 800;
+  }
+  .mini-input.with-sign { padding-left: 28px; }
+  .mini-input.yk { border-color: #d97706; color: #fcd34d; }
+  .input-meta-row { display: flex; gap: 8px; margin-bottom: 8px; }
+  .meta-input {
+    background: #041811; border: 1px solid #10b981; border-radius: 8px;
+    padding: 7px 8px; color: #fff; font-size: 12px; font-weight: 700;
+  }
+
+  /* LINE共有ボタン */
+  .btn-line {
+    background: #06c755; color: #fff; border: none; border-radius: 10px;
+    padding: 10px 8px; font-size: 12px; font-weight: 900; cursor: pointer; text-align: center;
+  }
+  .backup-input {
+    width: 100%; background: #041811; border: 1px solid #16654b; color: #e2e8f0;
+    border-radius: 7px; padding: 7px; font-size: 11px; font-family: monospace; margin-top: 5px;
+  }
+
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+  <!-- ヘッダー -->
+  <header class="header">
+    <div class="header-inner">
+      <div class="header-title">
+        <div class="logo-badge">丸</div>
+        <span>丸山リーグ点数計算</span>
+      </div>
+      <span style="font-size:11px;color:#6ee7b7;font-weight:700;">端末ローカル保存</span>
+    </div>
+  </header>
+
+  <div class="app-shell">
+
+    <!-- ページ切り替えナビ -->
+    <nav class="main-nav">
+      <button type="button" id="nav-btn-today" class="nav-page-btn active" onclick="switchMainPage('today')">
+        🀄 ① 本日の対局計算
+      </button>
+      <button type="button" id="nav-btn-league" class="nav-page-btn" onclick="switchMainPage('league')">
+        🏆 ② 全体累計・日別追加
+      </button>
+    </nav>
+
+    <!-- ========================================== -->
+    <!-- ページ1：本日の対局計算（半荘ごとの入力） -->
+    <!-- ========================================== -->
+    <div id="page-today">
+
+      <!-- 4麻/3麻 切替＆順位点設定 -->
+      <div class="top-bar">
+        <div class="mode-switch">
+          <button type="button" id="mode-4p" class="mode-btn active" onclick="setGameMode(4)">4人麻雀</button>
+          <button type="button" id="mode-3p" class="mode-btn" onclick="setGameMode(3)">3人麻雀</button>
+        </div>
+        <div id="rule-summary" class="rule-val">1位:±0 / 2位:-25 / 3位:-30 / 4位:-45</div>
+      </div>
+
+      <!-- 全員分まとめて計算カード -->
+      <section id="calc-section-card" class="card">
+        <div id="edit-mode-banner" class="banner-edit hidden">
+          <span id="edit-mode-label">✏️ 履歴データを編集中です</span>
+          <button type="button" class="btn-small" onclick="cancelEditHistory()">編集をやめる</button>
+        </div>
+
+        <div class="card-header">
+          <div>
+            <div id="calc-section-title" class="card-title">■ 全員分まとめて計算</div>
+            <div class="card-sub">名前と持ち点を入力（役満和了時は「🀄役満」をタップ）</div>
+          </div>
+          <button type="button" class="btn-small" onclick="clearTableCalc()">クリア</button>
+        </div>
+
+        <div id="name-empty-warning" class="banner-warn hidden">
+          ⚠️ 名前が選択されていない順位があります
+        </div>
+        <div id="name-duplicate-warning" class="banner-warn hidden">
+          ⚠️ 同じ名前が複数の順位で重複しています
+        </div>
+
+        <!-- 1位〜4位 固定HTML行 -->
+        <div class="rows-wrap">
+
+          <!-- 1位 -->
+          <div id="rank-row-1" class="rank-row">
+            <div class="rank-row-top">
+              <div class="rank-info">
+                <span class="rank-badge r1">1位</span>
+                <span id="rank-offset-1" class="rank-offset">±0</span>
+              </div>
+              <select id="table-player-1" class="player-select empty" onchange="handleTablePlayerChange(1, this.value)">
+                <option value="">-- 名前 --</option>
+                <option value="まさ">まさ</option>
+                <option value="なつき">なつき</option>
+                <option value="こうき">こうき</option>
+                <option value="こうたろう">こうたろう</option>
+                <option value="しんかわ">しんかわ</option>
+                <option value="ひろと">ひろと</option>
+              </select>
+              <div class="score-input-wrap">
+                <button type="button" class="sign-btn" onclick="toggleTableRowSign(1)">±</button>
+                <input type="text" inputmode="decimal" id="table-input-1" placeholder="35100 / 35.1" class="score-input" oninput="handleTableRowInput(1, this.value)">
+              </div>
+              <div class="row-result">
+                <div id="table-result-1" class="res-pt pt-none">---</div>
+                <div id="table-sub-1" class="res-sub">得点:--</div>
+              </div>
+            </div>
+            <div class="rank-row-bottom">
+              <button type="button" id="yk-btn-1" class="yakuman-toggle" onclick="toggleYakuman(1)">🀄 役満バッジを付ける</button>
+              <div id="yk-ctrl-1" class="yakuman-count-ctrl hidden">
+                <span>役満和了: <strong id="yk-val-1">1</strong>回</span>
+                <button type="button" class="yk-step-btn" onclick="changeYakumanCount(1, 1)">＋</button>
+                <button type="button" class="yk-step-btn" onclick="changeYakumanCount(1, -1)">－</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 2位 -->
+          <div id="rank-row-2" class="rank-row">
+            <div class="rank-row-top">
+              <div class="rank-info">
+                <span class="rank-badge r2">2位</span>
+                <span id="rank-offset-2" class="rank-offset">-25</span>
+              </div>
+              <select id="table-player-2" class="player-select empty" onchange="handleTablePlayerChange(2, this.value)">
+                <option value="">-- 名前 --</option>
+                <option value="まさ">まさ</option>
+                <option value="なつき">なつき</option>
+                <option value="こうき">こうき</option>
+                <option value="こうたろう">こうたろう</option>
+                <option value="しんかわ">しんかわ</option>
+                <option value="ひろと">ひろと</option>
+              </select>
+              <div class="score-input-wrap">
+                <button type="button" class="sign-btn" onclick="toggleTableRowSign(2)">±</button>
+                <input type="text" inputmode="decimal" id="table-input-2" placeholder="35100 / 35.1" class="score-input" oninput="handleTableRowInput(2, this.value)">
+              </div>
+              <div class="row-result">
+                <div id="table-result-2" class="res-pt pt-none">---</div>
+                <div id="table-sub-2" class="res-sub">得点:--</div>
+              </div>
+            </div>
+            <div class="rank-row-bottom">
+              <button type="button" id="yk-btn-2" class="yakuman-toggle" onclick="toggleYakuman(2)">🀄 役満バッジを付ける</button>
+              <div id="yk-ctrl-2" class="yakuman-count-ctrl hidden">
+                <span>役満和了: <strong id="yk-val-2">1</strong>回</span>
+                <button type="button" class="yk-step-btn" onclick="changeYakumanCount(2, 1)">＋</button>
+                <button type="button" class="yk-step-btn" onclick="changeYakumanCount(2, -1)">－</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 3位 -->
+          <div id="rank-row-3" class="rank-row">
+            <div class="rank-row-top">
+              <div class="rank-info">
+                <span class="rank-badge r3">3位</span>
+                <span id="rank-offset-3" class="rank-offset">-30</span>
+              </div>
+              <select id="table-player-3" class="player-select empty" onchange="handleTablePlayerChange(3, this.value)">
+                <option value="">-- 名前 --</option>
+                <option value="まさ">まさ</option>
+                <option value="なつき">なつき</option>
+                <option value="こうき">こうき</option>
+                <option value="こうたろう">こうたろう</option>
+                <option value="しんかわ">しんかわ</option>
+                <option value="ひろと">ひろと</option>
+              </select>
+              <div class="score-input-wrap">
+                <button type="button" class="sign-btn" onclick="toggleTableRowSign(3)">±</button>
+                <input type="text" inputmode="decimal" id="table-input-3" placeholder="35100 / 35.1" class="score-input" oninput="handleTableRowInput(3, this.value)">
+              </div>
+              <div class="row-result">
+                <div id="table-result-3" class="res-pt pt-none">---</div>
+                <div id="table-sub-3" class="res-sub">得点:--</div>
+              </div>
+            </div>
+            <div class="rank-row-bottom">
+              <button type="button" id="yk-btn-3" class="yakuman-toggle" onclick="toggleYakuman(3)">🀄 役満バッジを付ける</button>
+              <div id="yk-ctrl-3" class="yakuman-count-ctrl hidden">
+                <span>役満和了: <strong id="yk-val-3">1</strong>回</span>
+                <button type="button" class="yk-step-btn" onclick="changeYakumanCount(3, 1)">＋</button>
+                <button type="button" class="yk-step-btn" onclick="changeYakumanCount(3, -1)">－</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 4位 -->
+          <div id="rank-row-4" class="rank-row">
+            <div class="rank-row-top">
+              <div class="rank-info">
+                <span class="rank-badge r4">4位</span>
+                <span id="rank-offset-4" class="rank-offset">-45</span>
+              </div>
+              <select id="table-player-4" class="player-select empty" onchange="handleTablePlayerChange(4, this.value)">
+                <option value="">-- 名前 --</option>
+                <option value="まさ">まさ</option>
+                <option value="なつき">なつき</option>
+                <option value="こうき">こうき</option>
+                <option value="こうたろう">こうたろう</option>
+                <option value="しんかわ">しんかわ</option>
+                <option value="ひろと">ひろと</option>
+              </select>
+              <div class="score-input-wrap">
+                <button type="button" class="sign-btn" onclick="toggleTableRowSign(4)">±</button>
+                <input type="text" inputmode="decimal" id="table-input-4" placeholder="35100 / 35.1" class="score-input" oninput="handleTableRowInput(4, this.value)">
+              </div>
+              <div class="row-result">
+                <div id="table-result-4" class="res-pt pt-none">---</div>
+                <div id="table-sub-4" class="res-sub">得点:--</div>
+              </div>
+            </div>
+            <div class="rank-row-bottom">
+              <button type="button" id="yk-btn-4" class="yakuman-toggle" onclick="toggleYakuman(4)">🀄 役満バッジを付ける</button>
+              <div id="yk-ctrl-4" class="yakuman-count-ctrl hidden">
+                <span>役満和了: <strong id="yk-val-4">1</strong>回</span>
+                <button type="button" class="yk-step-btn" onclick="changeYakumanCount(4, 1)">＋</button>
+                <button type="button" class="yk-step-btn" onclick="changeYakumanCount(4, -1)">－</button>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <div id="table-validation-banner" class="hidden"></div>
+
+        <div class="sum-footer">
+          <div>素点合計: <strong id="table-raw-sum" style="color:#fff;font-family:monospace;">0</strong><span id="table-target-raw"> / 100,000点</span></div>
+          <div>ポイント計: <strong id="table-pt-sum" style="color:#fcd34d;font-family:monospace;">0.0</strong> pt</div>
+        </div>
+
+        <div class="btn-row">
+          <button type="button" id="save-main-btn" class="btn-main" onclick="saveTableHistory()" disabled>＋ 結果を本日の履歴に保存</button>
+          <button type="button" id="cancel-edit-btn" class="btn-cancel hidden" onclick="cancelEditHistory()">戻る</button>
+        </div>
+        <div id="save-status-hint" style="margin-top:6px;text-align:center;font-size:11px;color:#94a3b8;">
+          ※全員の名前選択（重複なし）と合計点数の一致で保存できます
+        </div>
+        <div id="save-feedback-msg" class="feedback hidden"></div>
+      </section>
+
+      <!-- 本日の保存データ・成績表 -->
+      <section class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title green">📊 本日の成績・履歴 (<span id="history-count-badge">0件</span>)</div>
+            <div class="card-sub">本日の対局が終わったら下のボタンで「全体累計」へ追加できます</div>
+          </div>
+          <button type="button" id="clear-all-history-btn" class="btn-small danger hidden" onclick="toggleConfirmClearAll(true)">全削除</button>
+        </div>
+
+        <div id="confirm-clear-bar" class="banner banner-err hidden" style="margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;">
+          <span>本日の履歴をすべて削除しますか？</span>
+          <div style="display:flex;gap:6px;">
+            <button type="button" class="btn-small danger" onclick="clearAllHistory()">削除する</button>
+            <button type="button" class="btn-small" onclick="toggleConfirmClearAll(false)">戻る</button>
+          </div>
+        </div>
+
+        <div class="tabs">
+          <button type="button" id="tab-btn-rank" class="tab-btn active" onclick="switchStatTab('rank')">🏆 本日集計</button>
+          <button type="button" id="tab-btn-matrix" class="tab-btn" onclick="switchStatTab('matrix')">📋 スコア表</button>
+          <button type="button" id="tab-btn-list" class="tab-btn" onclick="switchStatTab('list')">🕒 履歴・編集</button>
+        </div>
+
+        <!-- (A) 本日ランキング -->
+        <div id="view-rank" class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>順位 / 名前</th>
+                <th>本日合計pt</th>
+                <th>役満</th>
+                <th>戦数</th>
+                <th>平均着順</th>
+              </tr>
+            </thead>
+            <tbody id="player-stats-tbody"></tbody>
+          </table>
+        </div>
+
+        <!-- (B) 半荘別スコア表 -->
+        <div id="view-matrix" class="table-wrap hidden">
+          <table id="matrix-table"></table>
+        </div>
+
+        <!-- (C) 対局履歴カード -->
+        <div id="view-list" class="hist-list hidden"></div>
+
+        <!-- 本日の合計を全体累計へワンタップ追加するボタン -->
+        <div style="margin-top:12px; padding-top:10px; border-top:1px solid #134e3a;">
+          <button type="button" class="btn-main green-mode" style="margin-top:0;" onclick="pushTodayToLeague()">
+            📥 本日の合計成績を「② 全体累計」へ追加する
+          </button>
+          <div style="display:flex; gap:6px; margin-top:8px;">
+            <button type="button" class="btn-line" style="flex:1;" onclick="shareToLine('today')">📤 本日の結果をLINE共有</button>
+            <button type="button" class="btn-small gold" style="flex:1;" onclick="copyTodayMergeCode()">📋 他端末への合算コード作成</button>
+          </div>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- ========================================== -->
+    <!-- ページ2：全体累計・日別追加（複数人データの合算・蓄積） -->
+    <!-- ========================================== -->
+    <div id="page-league" class="hidden">
+
+      <!-- 全体累計ランキング＆役満カウント＆出禁バッジ -->
+      <section class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">👑 丸山リーグ 全体累計ランキング</div>
+            <div class="card-sub">全日程の総合計（累計 -200pt以下 で 🚫出禁 バッジ付与）</div>
+          </div>
+          <span id="league-days-badge" class="btn-small">0日分</span>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>総合順位 / 名前</th>
+                <th>累計ポイント</th>
+                <th>🀄役満計</th>
+                <th>総戦数</th>
+              </tr>
+            </thead>
+            <tbody id="league-total-tbody"></tbody>
+          </table>
+        </div>
+
+        <div style="display:flex; gap:8px; margin-top:10px;">
+          <button type="button" class="btn-line" style="flex:1;" onclick="shareToLine('league')">
+            🏆 全体累計ランキングをLINEへ共有・コピー
+          </button>
+        </div>
+      </section>
+
+      <!-- その日の合計を手動で追加するカード（±ボタン付き） -->
+      <section id="daily-form-card" class="card">
+        <div id="daily-edit-banner" class="banner-edit hidden">
+          <span id="daily-edit-label">✏️ 日別データを編集中</span>
+          <button type="button" class="btn-small" onclick="cancelEditDailySession()">編集をやめる</button>
+        </div>
+
+        <div class="card-header">
+          <div>
+            <div id="daily-form-title" class="card-title green">➕ その日の合計を手動で追加</div>
+            <div class="card-sub">他の人が計算した「その日の合計pt・戦数・役満数」を入力（±ボタンでマイナス切替可）</div>
+          </div>
+          <button type="button" class="btn-small" onclick="clearDailyForm()">クリア</button>
+        </div>
+
+        <div class="input-meta-row">
+          <input type="date" id="daily-date-input" class="meta-input" style="width:140px;">
+          <input type="text" id="daily-memo-input" class="meta-input" style="flex:1;" placeholder="メモ（例: なつき宅 4麻など）">
+        </div>
+
+        <div style="display:grid; grid-template-columns: 74px 1fr 52px 58px; gap:5px; padding:0 7px; font-size:10px; color:#94a3b8; font-weight:800;">
+          <span>メンバー</span>
+          <span style="text-align:right;">合計pt (±可)</span>
+          <span style="text-align:right;">戦数</span>
+          <span style="text-align:right;color:#fcd34d;">🀄役満</span>
+        </div>
+
+        <div id="daily-inputs-container" class="daily-input-grid"></div>
+
+        <div class="btn-row">
+          <button type="button" id="save-daily-btn" class="btn-main" onclick="saveDailySessionManual()">
+            ＋ この日の合計を全体累計に追加する
+          </button>
+          <button type="button" id="cancel-daily-edit-btn" class="btn-cancel hidden" onclick="cancelEditDailySession()">戻る</button>
+        </div>
+        <div id="daily-feedback-msg" class="feedback hidden"></div>
+      </section>
+
+      <!-- 他の人のスマホからLINE経由で1日分を合算 / 全データ引き継ぎ -->
+      <section class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title purple">📲 他端末のデータ合算・バックアップ</div>
+            <div class="card-sub">他の人が「① 本日の対局計算」で作った合算コードを貼り付けると1日分として追加されます</div>
+          </div>
+        </div>
+
+        <input type="text" id="merge-code-input" class="backup-input" placeholder="ここにLINEで受け取った「合算コード」または「全データ引継コード」を貼り付け">
+        <div style="display:flex; gap:6px; margin-top:8px;">
+          <button type="button" class="btn-main green-mode" style="margin-top:0; padding:9px; font-size:12px;" onclick="importMergeOrBackupCode()">
+            📥 コードを読み込んで合算・復元する
+          </button>
+          <button type="button" class="btn-small" onclick="exportFullLeagueBackup()">
+            全データ引継コード作成
+          </button>
+        </div>
+      </section>
+
+      <!-- 日別の蓄積履歴一覧（編集・削除可能） -->
+      <section class="card">
+        <div class="card-header">
+          <div class="card-title green">📅 追加済みの日別データ一覧</div>
+        </div>
+        <div id="daily-sessions-list" class="hist-list"></div>
+      </section>
+
+    </div>
+
+  </div>
+
+<script>
+  const PLAYERS = ['まさ', 'なつき', 'こうき', 'こうたろう', 'しんかわ', 'ひろと'];
+  const STORAGE_KEY_TODAY = 'maruyama_league_today_v2';
+  const STORAGE_KEY_SESSIONS = 'maruyama_league_sessions_v2';
+
+  const RULES = {
+    4: {
+      name: '4人麻雀',
+      targetScore: 100000,
+      ranks: [
+        { rank: 1, label: '1位', offset: 0, text: '±0' },
+        { rank: 2, label: '2位', offset: -25, text: '-25' },
+        { rank: 3, label: '3位', offset: -30, text: '-30' },
+        { rank: 4, label: '4位', offset: -45, text: '-45' }
+      ],
+      summaryText: '1位:±0 / 2位:-25 / 3位:-30 / 4位:-45'
+    },
+    3: {
+      name: '3人麻雀',
+      targetScore: 105000,
+      ranks: [
+        { rank: 1, label: '1位', offset: -20, text: '-20' },
+        { rank: 2, label: '2位', offset: -35, text: '-35' },
+        { rank: 3, label: '3位', offset: -50, text: '-50' }
+      ],
+      summaryText: '1位:-20 / 2位:-35 / 3位:-50'
+    }
+  };
+
+  let currentMode = 4;
+  let tableScores = { 1: '', 2: '', 3: '', 4: '' };
+  let tablePlayers = { 1: '', 2: '', 3: '', 4: '' };
+  let tableYakumans = { 1: 0, 2: 0, 3: 0, 4: 0 };
+
+  let historyRecords = [];
+  let leagueSessions = [];
+
+  let editingRecordId = null;
+  let editingSessionId = null;
+
+  function roundToOneDecimal(val) {
+    return Math.round(val * 10) / 10;
+  }
+
+  function parseMahjongScore(rawStr) {
+    if (rawStr === null || rawStr === undefined) return null;
+    const normalized = String(rawStr)
+      .replace(/[０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0))
+      .replace(/[ー−―]/g, '-')
+      .replace(/[。．]/g, '.')
+      .replace(/,/g, '')
+      .trim();
+
+    if (normalized === '' || normalized === '-' || normalized === '.') return null;
+    const num = parseFloat(normalized);
+    if (isNaN(num)) return null;
+
+    if (normalized.includes('.')) {
+      return { basePoint: roundToOneDecimal(num), estimatedRawScore: Math.round(num * 1000) };
+    }
+    const absNum = Math.abs(num);
+    if (absNum >= 1000 || (absNum >= 100 && absNum % 100 === 0)) {
+      return { basePoint: roundToOneDecimal(num / 1000), estimatedRawScore: Math.round(num) };
+    }
+    return { basePoint: roundToOneDecimal(num), estimatedRawScore: Math.round(num * 1000) };
+  }
+
+  function formatPoint(pt) {
+    const rounded = roundToOneDecimal(pt);
+    const sign = rounded > 0 ? '+' : '';
+    const numStr = Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+    return sign + numStr;
+  }
+
+  function formatBaseScore(val) {
+    const rounded = roundToOneDecimal(val);
+    return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+  }
+
+  function ptColorClass(pt) {
+    if (pt > 0) return 'pt-plus';
+    if (pt < 0) return 'pt-minus';
+    return 'pt-zero';
+  }
+
+  function switchMainPage(page) {
+    const isToday = (page === 'today');
+    document.getElementById('page-today').className = isToday ? '' : 'hidden';
+    document.getElementById('page-league').className = isToday ? 'hidden' : '';
+    document.getElementById('nav-btn-today').className = isToday ? 'nav-page-btn active' : 'nav-page-btn';
+    document.getElementById('nav-btn-league').className = !isToday ? 'nav-page-btn active' : 'nav-page-btn';
+    if (!isToday) {
+      renderLeagueSection();
+    }
+  }
+
+  function setGameMode(mode) {
+    currentMode = mode;
+    document.getElementById('mode-4p').className = mode === 4 ? 'mode-btn active' : 'mode-btn';
+    document.getElementById('mode-3p').className = mode === 3 ? 'mode-btn active' : 'mode-btn';
+    document.getElementById('rule-summary').textContent = RULES[mode].summaryText;
+
+    const row4 = document.getElementById('rank-row-4');
+    if (row4) {
+      if (mode === 3) row4.classList.add('hidden');
+      else row4.classList.remove('hidden');
+    }
+    RULES[mode].ranks.forEach(r => {
+      const offEl = document.getElementById('rank-offset-' + r.rank);
+      if (offEl) offEl.textContent = r.text;
+    });
+
+    updateTableCalculations();
+  }
+
+  function toggleYakuman(rank) {
+    tableYakumans[rank] = tableYakumans[rank] > 0 ? 0 : 1;
+    syncYakumanRowUI(rank);
+  }
+
+  function changeYakumanCount(rank, delta) {
+    const next = (tableYakumans[rank] || 0) + delta;
+    tableYakumans[rank] = next < 0 ? 0 : next;
+    syncYakumanRowUI(rank);
+  }
+
+  function syncYakumanRowUI(rank) {
+    const count = tableYakumans[rank] || 0;
+    const btn = document.getElementById('yk-btn-' + rank);
+    const ctrl = document.getElementById('yk-ctrl-' + rank);
+    const valEl = document.getElementById('yk-val-' + rank);
+    if (!btn || !ctrl || !valEl) return;
+
+    if (count > 0) {
+      btn.className = 'yakuman-toggle active';
+      btn.textContent = '🀄 役満バッジ ON';
+      ctrl.classList.remove('hidden');
+      valEl.textContent = String(count);
+    } else {
+      btn.className = 'yakuman-toggle';
+      btn.textContent = '🀄 役満バッジを付ける';
+      ctrl.classList.add('hidden');
+    }
+  }
+
+  function handleTablePlayerChange(rank, name) {
+    tablePlayers[rank] = name;
+    const selectEl = document.getElementById('table-player-' + rank);
+    if (selectEl) {
+      selectEl.className = name === '' ? 'player-select empty' : 'player-select';
+    }
+    updateTableCalculations();
+  }
+
+  function handleTableRowInput(rank, value) {
+    tableScores[rank] = value;
+    updateTableCalculations();
+  }
+
+  function toggleTableRowSign(rank) {
+    const input = document.getElementById('table-input-' + rank);
+    if (!input) return;
+    const val = input.value.trim();
+    input.value = !val ? '-' : (val.startsWith('-') ? val.slice(1) : '-' + val);
+    tableScores[rank] = input.value;
+    updateTableCalculations();
+    input.focus();
+  }
+
+  function clearTableCalc() {
+    tableScores = { 1: '', 2: '', 3: '', 4: '' };
+    tablePlayers = { 1: '', 2: '', 3: '', 4: '' };
+    tableYakumans = { 1: 0, 2: 0, 3: 0, 4: 0 };
+    for (let r = 1; r <= 4; r++) {
+      const inp = document.getElementById('table-input-' + r);
+      const sel = document.getElementById('table-player-' + r);
+      if (inp) inp.value = '';
+      if (sel) {
+        sel.value = '';
+        sel.className = 'player-select empty';
+      }
+      syncYakumanRowUI(r);
+    }
+    updateTableCalculations();
+  }
+
+  function validatePlayersState() {
+    const ranks = RULES[currentMode].ranks;
+    const activeNames = ranks.map(r => tablePlayers[r.rank] || '');
+    const nonEmptyNames = activeNames.filter(n => n !== '');
+    const hasEmpty = nonEmptyNames.length < ranks.length;
+    const uniqueNonEmpty = new Set(nonEmptyNames);
+    const hasDuplicate = uniqueNonEmpty.size < nonEmptyNames.length;
+
+    const emptyWarnEl = document.getElementById('name-empty-warning');
+    const dupWarnEl = document.getElementById('name-duplicate-warning');
+
+    const anyScoreEntered = ranks.some(r => (tableScores[r.rank] || '').trim() !== '');
+    const anyNameSelected = nonEmptyNames.length > 0;
+
+    if (hasEmpty && (anyScoreEntered || anyNameSelected)) {
+      emptyWarnEl.classList.remove('hidden');
+    } else {
+      emptyWarnEl.classList.add('hidden');
+    }
+
+    if (hasDuplicate) {
+      dupWarnEl.classList.remove('hidden');
+    } else {
+      dupWarnEl.classList.add('hidden');
+    }
+
+    return { hasEmpty, hasDuplicate, isValidNames: !hasEmpty && !hasDuplicate };
+  }
+
+  function updateTableCalculations() {
+    const ranks = RULES[currentMode].ranks;
+    const targetScore = RULES[currentMode].targetScore;
+    let rawSum = 0;
+    let ptSum = 0;
+    let filledCount = 0;
+
+    ranks.forEach(r => {
+      const parsed = parseMahjongScore(tableScores[r.rank] || '');
+      const resEl = document.getElementById('table-result-' + r.rank);
+      const subEl = document.getElementById('table-sub-' + r.rank);
+      if (!resEl || !subEl) return;
+
+      if (!parsed) {
+        resEl.textContent = '---';
+        resEl.className = 'res-pt pt-none';
+        subEl.textContent = '得点:--';
+      } else {
+        filledCount++;
+        const finalPt = roundToOneDecimal(parsed.basePoint + r.offset);
+        rawSum += parsed.estimatedRawScore;
+        ptSum = roundToOneDecimal(ptSum + finalPt);
+        resEl.textContent = formatPoint(finalPt) + 'pt';
+        resEl.className = 'res-pt ' + ptColorClass(finalPt);
+        subEl.textContent = formatBaseScore(parsed.basePoint) + '(' + r.text + ')';
+      }
+    });
+
+    const hasInput = filledCount > 0;
+    const allScoresFilled = filledCount === ranks.length;
+    const isScoreExact = allScoresFilled && (rawSum === targetScore);
+
+    const rawSumEl = document.getElementById('table-raw-sum');
+    rawSumEl.textContent = hasInput ? rawSum.toLocaleString() : '0';
+    document.getElementById('table-target-raw').textContent = ' / ' + targetScore.toLocaleString() + '点';
+    document.getElementById('table-pt-sum').textContent = hasInput ? formatPoint(ptSum) : '0';
+
+    const bannerEl = document.getElementById('table-validation-banner');
+    if (!hasInput) {
+      bannerEl.className = 'hidden';
+      rawSumEl.style.color = '#fff';
+    } else if (rawSum === targetScore && allScoresFilled) {
+      rawSumEl.style.color = '#34d399';
+      bannerEl.className = 'banner banner-ok';
+      bannerEl.innerHTML = `<span>✅ 合計点数OK（${targetScore.toLocaleString()}点ちょうど）</span><span>±0</span>`;
+    } else {
+      const diff = rawSum - targetScore;
+      const diffSign = diff > 0 ? '+' + diff.toLocaleString() : diff.toLocaleString();
+      const diffText = diff > 0 ? `${diff.toLocaleString()}点 多い` : `${Math.abs(diff).toLocaleString()}点 足りない`;
+      rawSumEl.style.color = '#fb7185';
+      bannerEl.className = 'banner banner-err';
+      bannerEl.innerHTML = `
+        <div class="err-title">⚠️ 点数が違います。</div>
+        <div>${RULES[currentMode].name}の合計は <strong>${targetScore.toLocaleString()}点</strong> ですが、現在 <strong>${rawSum.toLocaleString()}点</strong> です。</div>
+        <div class="err-diff">差額: ${diffSign}点（${diffText}）</div>
+      `;
+    }
+
+    const nameState = validatePlayersState();
+    const canSave = isScoreExact && nameState.isValidNames;
+    const saveBtn = document.getElementById('save-main-btn');
+    const hintEl = document.getElementById('save-status-hint');
+
+    if (saveBtn) saveBtn.disabled = !canSave;
+    if (hintEl) {
+      if (canSave) {
+        hintEl.style.color = '#34d399';
+        hintEl.textContent = editingRecordId !== null
+          ? '✅ 条件OK！「編集内容を上書き保存する」を押して確定してください'
+          : '✅ 条件OK！「結果を本日の履歴に保存」を押して記録できます';
+      } else {
+        hintEl.style.color = '#fb7185';
+        const reasons = [];
+        if (nameState.hasEmpty) reasons.push('全員の名前選択');
+        if (nameState.hasDuplicate) reasons.push('名前の重複解消');
+        if (!allScoresFilled) reasons.push('全員の点数入力');
+        else if (!isScoreExact) reasons.push(`合計点数を${targetScore.toLocaleString()}点に一致させる`);
+        hintEl.textContent = '※保存するには：' + reasons.join('・') + ' が必要です';
+      }
+    }
+  }
+
+  function formatNowTime() {
+    const now = new Date();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const d = String(now.getDate()).padStart(2, '0');
+    const hh = String(now.getHours()).padStart(2, '0');
+    const mm = String(now.getMinutes()).padStart(2, '0');
+    return `${m}/${d} ${hh}:${mm}`;
+  }
+
+  function getTodayDateString() {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const d = String(now.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+
+  function showFeedback(msg, isError) {
+    const el = document.getElementById('save-feedback-msg');
+    el.textContent = msg;
+    el.className = 'feedback ' + (isError ? 'banner-err' : 'banner-ok');
+    setTimeout(() => el.classList.add('hidden'), 3500);
+  }
+
+  function showDailyFeedback(msg, isError) {
+    const el = document.getElementById('daily-feedback-msg');
+    el.textContent = msg;
+    el.className = 'feedback ' + (isError ? 'banner-err' : 'banner-ok');
+    setTimeout(() => el.classList.add('hidden'), 3500);
+  }
+
+  function saveTableHistory() {
+    const ranks = RULES[currentMode].ranks;
+    const targetScore = RULES[currentMode].targetScore;
+    const nameState = validatePlayersState();
+
+    if (!nameState.isValidNames) {
+      showFeedback('⚠️ 名前の未選択または重複があります。', true);
+      return;
+    }
+
+    const results = [];
+    let rawSum = 0;
+
+    for (const r of ranks) {
+      const parsed = parseMahjongScore(tableScores[r.rank] || '');
+      if (!parsed) return;
+      rawSum += parsed.estimatedRawScore;
+      results.push({
+        rank: r.rank,
+        label: r.label,
+        name: tablePlayers[r.rank],
+        rawScore: parsed.estimatedRawScore,
+        basePoint: parsed.basePoint,
+        point: roundToOneDecimal(parsed.basePoint + r.offset),
+        yakuman: tableYakumans[r.rank] || 0
+      });
+    }
+
+    if (rawSum !== targetScore) {
+      showFeedback(`⚠️ 合計点数が${targetScore.toLocaleString()}点になっていません。`, true);
+      return;
+    }
+
+    if (editingRecordId !== null) {
+      const idx = historyRecords.findIndex(item => item.id === editingRecordId);
+      if (idx !== -1) {
+        historyRecords[idx] = {
+          ...historyRecords[idx],
+          mode: currentMode,
+          modeName: RULES[currentMode].name,
+          results: results,
+          editedAt: formatNowTime()
+        };
+      }
+      persistAll();
+      cancelEditHistory(true);
+      renderHistorySection();
+      showFeedback('✅ 履歴の編集内容を上書き保存しました！', false);
+    } else {
+      historyRecords.unshift({
+        id: Date.now(),
+        timestamp: formatNowTime(),
+        mode: currentMode,
+        modeName: RULES[currentMode].name,
+        results: results
+      });
+      persistAll();
+      clearTableCalc();
+      renderHistorySection();
+      showFeedback('✅ 対局結果を本日の履歴に保存しました！', false);
+    }
+  }
+
+  function startEditHistory(id) {
+    const rec = historyRecords.find(item => item.id === id);
+    if (!rec) return;
+
+    editingRecordId = id;
+    setGameMode(rec.mode || (rec.results.length === 3 ? 3 : 4));
+    clearTableCalc();
+
+    rec.results.forEach(r => {
+      tablePlayers[r.rank] = r.name;
+      tableScores[r.rank] = String(r.rawScore);
+      tableYakumans[r.rank] = r.yakuman || 0;
+
+      const sel = document.getElementById('table-player-' + r.rank);
+      const inp = document.getElementById('table-input-' + r.rank);
+      if (sel) {
+        sel.value = r.name;
+        sel.className = 'player-select';
+      }
+      if (inp) inp.value = String(r.rawScore);
+      syncYakumanRowUI(r.rank);
+    });
+
+    document.getElementById('calc-section-card').classList.add('editing-mode');
+    document.getElementById('edit-mode-banner').classList.remove('hidden');
+    const gameNum = historyRecords.length - historyRecords.findIndex(item => item.id === id);
+    document.getElementById('edit-mode-label').textContent = `✏️ 第${gameNum}回戦（${rec.timestamp}）を編集中`;
+    document.getElementById('calc-section-title').textContent = `✏️ 第${gameNum}回戦の結果を編集`;
+    document.getElementById('calc-section-title').className = 'card-title blue';
+
+    const saveBtn = document.getElementById('save-main-btn');
+    saveBtn.textContent = '💾 編集内容を上書き保存する';
+    saveBtn.classList.add('update-mode');
+    document.getElementById('cancel-edit-btn').classList.remove('hidden');
+
+    updateTableCalculations();
+    renderHistorySection();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function cancelEditHistory(silent) {
+    editingRecordId = null;
+    document.getElementById('calc-section-card').classList.remove('editing-mode');
+    document.getElementById('edit-mode-banner').classList.add('hidden');
+    document.getElementById('calc-section-title').textContent = '■ 全員分まとめて計算';
+    document.getElementById('calc-section-title').className = 'card-title';
+
+    const saveBtn = document.getElementById('save-main-btn');
+    saveBtn.textContent = '＋ 結果を本日の履歴に保存';
+    saveBtn.classList.remove('update-mode');
+    document.getElementById('cancel-edit-btn').classList.add('hidden');
+
+    clearTableCalc();
+    renderHistorySection();
+    if (!silent) showFeedback('編集をキャンセルしました', false);
+  }
+
+  function switchStatTab(tab) {
+    ['rank', 'matrix', 'list'].forEach(t => {
+      document.getElementById('tab-btn-' + t).className = (t === tab) ? 'tab-btn active' : 'tab-btn';
+      document.getElementById('view-' + t).className = (t === tab)
+        ? (t === 'list' ? 'hist-list' : 'table-wrap')
+        : 'hidden';
+    });
+  }
+
+  function getTodayAggregatedStats() {
+    const statsMap = {};
+    PLAYERS.forEach(name => {
+      statsMap[name] = { name, totalPt: 0, games: 0, rankSum: 0, yakuman: 0, ranks: [0, 0, 0, 0] };
+    });
+
+    historyRecords.forEach(rec => {
+      if (!Array.isArray(rec.results)) return;
+      rec.results.forEach(r => {
+        if (!statsMap[r.name]) {
+          statsMap[r.name] = { name: r.name, totalPt: 0, games: 0, rankSum: 0, yakuman: 0, ranks: [0, 0, 0, 0] };
+        }
+        statsMap[r.name].totalPt = roundToOneDecimal(statsMap[r.name].totalPt + r.point);
+        statsMap[r.name].games += 1;
+        statsMap[r.name].rankSum += r.rank;
+        statsMap[r.name].yakuman += (r.yakuman || 0);
+        if (r.rank >= 1 && r.rank <= 4) statsMap[r.name].ranks[r.rank - 1] += 1;
+      });
+    });
+    return statsMap;
+  }
+
+  function renderHistorySection() {
+    document.getElementById('history-count-badge').textContent = historyRecords.length + '件';
+    const clearBtn = document.getElementById('clear-all-history-btn');
+    if (historyRecords.length > 0) clearBtn.classList.remove('hidden');
+    else clearBtn.classList.add('hidden');
+
+    const statsMap = getTodayAggregatedStats();
+    const sortedStats = Object.values(statsMap).sort((a, b) => {
+      if (a.games === 0 && b.games === 0) return 0;
+      if (a.games === 0) return 1;
+      if (b.games === 0) return -1;
+      return b.totalPt - a.totalPt;
+    });
+
+    const medals = ['🥇', '🥈', '🥉'];
+    document.getElementById('player-stats-tbody').innerHTML = sortedStats.map((st, i) => {
+      const medal = (st.games > 0 && i < 3) ? medals[i] : `${i + 1}.`;
+      const cls = st.games === 0 ? 'pt-none' : ptColorClass(st.totalPt);
+      const ptText = st.games === 0 ? '---' : formatPoint(st.totalPt) + 'pt';
+      const avg = st.games === 0 ? '-' : (st.rankSum / st.games).toFixed(2) + '位';
+      const ykHtml = st.yakuman > 0 ? `<span class="yk-badge">🀄×${st.yakuman}</span>` : '<span class="pt-none">-</span>';
+      return `
+        <tr>
+          <td style="font-weight:800;color:#fff;">${medal} ${st.name}</td>
+          <td class="${cls}" style="font-family:monospace;font-weight:900;font-size:14px;">${ptText}</td>
+          <td style="text-align:center;">${ykHtml}</td>
+          <td>${st.games}戦</td>
+          <td>${avg}</td>
+        </tr>
+      `;
+    }).join('');
+
+    const matrixEl = document.getElementById('matrix-table');
+    if (historyRecords.length === 0) {
+      matrixEl.innerHTML = '<tr><td style="text-align:center;padding:16px;color:#64748b;">まだ本日の履歴がありません</td></tr>';
+    } else {
+      const chron = [...historyRecords].reverse();
+      const headCols = PLAYERS.map(p => `<th>${p}</th>`).join('');
+      const bodyRows = chron.map((rec, idx) => {
+        const map = {};
+        rec.results.forEach(r => { map[r.name] = r; });
+        const cols = PLAYERS.map(p => {
+          const item = map[p];
+          if (!item) return '<td class="pt-none">-</td>';
+          const yk = item.yakuman > 0 ? `🀄` : '';
+          return `<td class="${ptColorClass(item.point)}" style="font-family:monospace;font-weight:800;">${yk}${formatPoint(item.point)}</td>`;
+        }).join('');
+        return `
+          <tr>
+            <td style="font-weight:700;color:#cbd5e1;">
+              ${idx + 1}回戦
+              <button type="button" class="btn-small edit" style="padding:1px 5px;font-size:10px;margin-left:3px;" onclick="startEditHistory(${rec.id})">編集</button>
+            </td>
+            ${cols}
+          </tr>
+        `;
+      }).join('');
+
+      const sumCols = PLAYERS.map(p => {
+        const st = statsMap[p];
+        if (!st || st.games === 0) return '<td class="pt-none">0</td>';
+        return `<td class="${ptColorClass(st.totalPt)}" style="font-family:monospace;font-weight:900;border-top:2px solid #10b981;">${formatPoint(st.totalPt)}</td>`;
+      }).join('');
+
+      matrixEl.innerHTML = `
+        <thead><tr><th>半荘</th>${headCols}</tr></thead>
+        <tbody>${bodyRows}<tr style="background:#07261c;"><td style="font-weight:900;color:#fcd34d;border-top:2px solid #10b981;">合計</td>${sumCols}</tr></tbody>
+      `;
+    }
+
+    const listEl = document.getElementById('view-list');
+    if (historyRecords.length === 0) {
+      listEl.innerHTML = '<div style="text-align:center;padding:16px;color:#64748b;font-size:12px;">まだ本日の履歴はありません</div>';
+    } else {
+      listEl.innerHTML = historyRecords.map((rec, idx) => {
+        const num = historyRecords.length - idx;
+        const isEditingThis = (editingRecordId === rec.id);
+        const cardCls = isEditingThis ? 'hist-card editing-target' : 'hist-card';
+        const items = rec.results.map(r => {
+          const ykBadge = r.yakuman > 0 ? `<span class="yk-badge">🀄役満${r.yakuman > 1 ? '×' + r.yakuman : ''}</span>` : '';
+          return `
+            <div class="hist-item">
+              <span><strong style="color:#94a3b8;">${r.label}</strong> <strong>${r.name}</strong>${ykBadge}</span>
+              <span class="${ptColorClass(r.point)}" style="font-family:monospace;font-weight:900;">${formatPoint(r.point)}pt</span>
+            </div>
+          `;
+        }).join('');
+        return `
+          <div class="${cardCls}">
+            <div class="hist-head">
+              <span><strong style="color:#fcd34d;">#${num} ${rec.modeName}</strong> (${rec.timestamp})</span>
+              <div style="display:flex;gap:5px;">
+                <button type="button" class="btn-small edit" style="padding:3px 8px;" onclick="startEditHistory(${rec.id})">✏️ 編集</button>
+                <button type="button" class="btn-small danger" style="padding:3px 8px;" onclick="deleteHistoryItem(${rec.id})">削除</button>
+              </div>
+            </div>
+            <div class="hist-grid">${items}</div>
+          </div>
+        `;
+      }).join('');
+    }
+  }
+
+  function deleteHistoryItem(id) {
+    if (editingRecordId === id) cancelEditHistory(true);
+    historyRecords = historyRecords.filter(x => x.id !== id);
+    persistAll();
+    renderHistorySection();
+  }
+
+  function toggleConfirmClearAll(show) {
+    const bar = document.getElementById('confirm-clear-bar');
+    if (show) bar.classList.remove('hidden');
+    else bar.classList.add('hidden');
+  }
+
+  function clearAllHistory() {
+    if (editingRecordId !== null) cancelEditHistory(true);
+    historyRecords = [];
+    persistAll();
+    toggleConfirmClearAll(false);
+    renderHistorySection();
+  }
+
+  // ==================================================
+  // ページ2：全体累計＆日別データの追加・編集ロジック
+  // ==================================================
+
+  function renderDailyInputForm() {
+    const container = document.getElementById('daily-inputs-container');
+    if (!container) return;
+    const dateInp = document.getElementById('daily-date-input');
+    if (dateInp && !dateInp.value) dateInp.value = getTodayDateString();
+
+    container.innerHTML = PLAYERS.map((name, idx) => `
+      <div class="daily-player-row">
+        <span class="daily-player-name">${name}</span>
+        <div class="daily-pt-wrap">
+          <button type="button" class="daily-sign-btn" onclick="toggleDailyPtSign(${idx})">±</button>
+          <input type="text" inputmode="decimal" id="daily-pt-${idx}" class="mini-input with-sign" placeholder="0.0">
+        </div>
+        <input type="number" inputmode="numeric" id="daily-gm-${idx}" class="mini-input" placeholder="0">
+        <input type="number" inputmode="numeric" id="daily-yk-${idx}" class="mini-input yk" placeholder="0">
+      </div>
+    `).join('');
+  }
+
+  // 日別手動追加の合計pt入力欄用 ±ボタン処理
+  function toggleDailyPtSign(idx) {
+    const input = document.getElementById('daily-pt-' + idx);
+    if (!input) return;
+    const val = input.value.trim();
+    if (!val) {
+      input.value = '-';
+    } else if (val.startsWith('-')) {
+      input.value = val.slice(1);
+    } else if (val.startsWith('+')) {
+      input.value = '-' + val.slice(1);
+    } else {
+      input.value = '-' + val;
+    }
+    input.focus();
+  }
+
+  function clearDailyForm() {
+    document.getElementById('daily-date-input').value = getTodayDateString();
+    document.getElementById('daily-memo-input').value = '';
+    PLAYERS.forEach((_, idx) => {
+      const pt = document.getElementById('daily-pt-' + idx);
+      const gm = document.getElementById('daily-gm-' + idx);
+      const yk = document.getElementById('daily-yk-' + idx);
+      if (pt) pt.value = '';
+      if (gm) gm.value = '';
+      if (yk) yk.value = '';
+    });
+  }
+
+  function pushTodayToLeague() {
+    if (historyRecords.length === 0) {
+      showFeedback('⚠️ 本日の対局履歴がまだ0件です。', true);
+      return;
+    }
+    const statsMap = getTodayAggregatedStats();
+    const members = {};
+    PLAYERS.forEach(name => {
+      const st = statsMap[name];
+      if (st && (st.games > 0 || st.totalPt !== 0 || st.yakuman > 0)) {
+        members[name] = {
+          pt: st.totalPt,
+          games: st.games,
+          yakuman: st.yakuman
+        };
+      }
+    });
+
+    const newSession = {
+      id: Date.now(),
+      date: getTodayDateString(),
+      memo: `本日入力分 (${historyRecords.length}半荘)`,
+      members: members
+    };
+
+    leagueSessions.unshift(newSession);
+    persistAll();
+    switchMainPage('league');
+    showDailyFeedback('✅ 本日の合計成績を全体累計へ追加しました！', false);
+  }
+
+  function saveDailySessionManual() {
+    const dateVal = document.getElementById('daily-date-input').value || getTodayDateString();
+    const memoVal = document.getElementById('daily-memo-input').value.trim() || '手動入力';
+    const members = {};
+    let hasAny = false;
+
+    PLAYERS.forEach((name, idx) => {
+      const ptRaw = (document.getElementById('daily-pt-' + idx).value || '')
+        .replace(/[０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0))
+        .replace(/[ー−―]/g, '-')
+        .replace(/[。．]/g, '.')
+        .trim();
+      const gmRaw = (document.getElementById('daily-gm-' + idx).value || '').trim();
+      const ykRaw = (document.getElementById('daily-yk-' + idx).value || '').trim();
+
+      const validPtInput = ptRaw !== '' && ptRaw !== '-' && ptRaw !== '.' && !isNaN(parseFloat(ptRaw));
+      const pt = validPtInput ? roundToOneDecimal(parseFloat(ptRaw)) : 0;
+      const games = gmRaw !== '' ? parseInt(gmRaw, 10) || 0 : 0;
+      const yakuman = ykRaw !== '' ? parseInt(ykRaw, 10) || 0 : 0;
+
+      if (validPtInput || games > 0 || yakuman > 0) {
+        hasAny = true;
+        members[name] = { pt, games: games > 0 ? games : (validPtInput ? 1 : 0), yakuman };
+      }
+    });
+
+    if (!hasAny) {
+      showDailyFeedback('⚠️ 少なくとも1人分のポイントまたは役満数を入力してください。', true);
+      return;
+    }
+
+    if (editingSessionId !== null) {
+      const idx = leagueSessions.findIndex(s => s.id === editingSessionId);
+      if (idx !== -1) {
+        leagueSessions[idx] = {
+          ...leagueSessions[idx],
+          date: dateVal,
+          memo: memoVal,
+          members: members
+        };
+      }
+      persistAll();
+      cancelEditDailySession(true);
+      renderLeagueSection();
+      showDailyFeedback('✅ 日別データを上書き更新しました！', false);
+    } else {
+      leagueSessions.unshift({
+        id: Date.now(),
+        date: dateVal,
+        memo: memoVal,
+        members: members
+      });
+      persistAll();
+      clearDailyForm();
+      renderLeagueSection();
+      showDailyFeedback('✅ この日の合計を全体累計に追加しました！', false);
+    }
+  }
+
+  function startEditDailySession(id) {
+    const sess = leagueSessions.find(s => s.id === id);
+    if (!sess) return;
+    editingSessionId = id;
+
+    document.getElementById('daily-date-input').value = sess.date || getTodayDateString();
+    document.getElementById('daily-memo-input').value = sess.memo || '';
+
+    PLAYERS.forEach((name, idx) => {
+      const m = (sess.members && sess.members[name]) ? sess.members[name] : null;
+      document.getElementById('daily-pt-' + idx).value = m ? String(m.pt) : '';
+      document.getElementById('daily-gm-' + idx).value = m ? String(m.games) : '';
+      document.getElementById('daily-yk-' + idx).value = m ? String(m.yakuman || 0) : '';
+    });
+
+    document.getElementById('daily-form-card').classList.add('editing-mode');
+    document.getElementById('daily-edit-banner').classList.remove('hidden');
+    document.getElementById('daily-edit-label').textContent = `✏️ ${sess.date} (${sess.memo}) を編集中`;
+    document.getElementById('daily-form-title').textContent = '✏️ 日別データを編集';
+    document.getElementById('daily-form-title').className = 'card-title blue';
+
+    const btn = document.getElementById('save-daily-btn');
+    btn.textContent = '💾 編集内容を上書き保存する';
+    btn.classList.add('update-mode');
+    document.getElementById('cancel-daily-edit-btn').classList.remove('hidden');
+
+    renderLeagueSection();
+    document.getElementById('daily-form-card').scrollIntoView({ behavior: 'smooth' });
+  }
+
+  function cancelEditDailySession(silent) {
+    editingSessionId = null;
+    document.getElementById('daily-form-card').classList.remove('editing-mode');
+    document.getElementById('daily-edit-banner').classList.add('hidden');
+    document.getElementById('daily-form-title').textContent = '➕ その日の合計を手動で追加';
+    document.getElementById('daily-form-title').className = 'card-title green';
+
+    const btn = document.getElementById('save-daily-btn');
+    btn.textContent = '＋ この日の合計を全体累計に追加する';
+    btn.classList.remove('update-mode');
+    document.getElementById('cancel-daily-edit-btn').classList.add('hidden');
+
+    clearDailyForm();
+    renderLeagueSection();
+    if (!silent) showDailyFeedback('編集をキャンセルしました', false);
+  }
+
+  function deleteDailySession(id) {
+    if (editingSessionId === id) cancelEditDailySession(true);
+    leagueSessions = leagueSessions.filter(s => s.id !== id);
+    persistAll();
+    renderLeagueSection();
+  }
+
+  function getLeagueTotalStats() {
+    const totals = {};
+    PLAYERS.forEach(name => {
+      totals[name] = { name, totalPt: 0, games: 0, yakuman: 0 };
+    });
+
+    leagueSessions.forEach(sess => {
+      if (!sess.members) return;
+      Object.keys(sess.members).forEach(name => {
+        if (!totals[name]) totals[name] = { name, totalPt: 0, games: 0, yakuman: 0 };
+        const m = sess.members[name];
+        totals[name].totalPt = roundToOneDecimal(totals[name].totalPt + (Number(m.pt) || 0));
+        totals[name].games += (parseInt(m.games, 10) || 0);
+        totals[name].yakuman += (parseInt(m.yakuman, 10) || 0);
+      });
+    });
+
+    return Object.values(totals).sort((a, b) => {
+      if (a.games === 0 && a.yakuman === 0 && b.games === 0 && b.yakuman === 0) return 0;
+      if (a.games === 0 && a.yakuman === 0) return 1;
+      if (b.games === 0 && b.yakuman === 0) return -1;
+      return b.totalPt - a.totalPt;
+    });
+  }
+
+  function renderLeagueSection() {
+    document.getElementById('league-days-badge').textContent = `${leagueSessions.length}日分蓄積`;
+    const sorted = getLeagueTotalStats();
+    const medals = ['🥇', '🥈', '🥉'];
+
+    document.getElementById('league-total-tbody').innerHTML = sorted.map((st, i) => {
+      const hasData = st.games > 0 || st.totalPt !== 0 || st.yakuman > 0;
+      const medal = (hasData && i < 3) ? medals[i] : `${i + 1}.`;
+      const cls = !hasData ? 'pt-none' : ptColorClass(st.totalPt);
+      const ptText = !hasData ? '---' : formatPoint(st.totalPt) + 'pt';
+      const ykHtml = st.yakuman > 0
+        ? `<span class="yk-badge">🀄役満×${st.yakuman}</span>`
+        : '<span class="pt-none">0回</span>';
+      const banHtml = (hasData && st.totalPt <= -200)
+        ? `<span class="ban-badge">🚫出禁</span>`
+        : '';
+      return `
+        <tr>
+          <td style="font-weight:900;color:#fff;">${medal} ${st.name}${banHtml}</td>
+          <td class="${cls}" style="font-family:monospace;font-weight:900;font-size:15px;">${ptText}</td>
+          <td>${ykHtml}</td>
+          <td>${st.games}戦</td>
+        </tr>
+      `;
+    }).join('');
+
+    const listEl = document.getElementById('daily-sessions-list');
+    if (leagueSessions.length === 0) {
+      listEl.innerHTML = '<div style="text-align:center;padding:16px;color:#64748b;font-size:12px;">まだ追加された日別データはありません。<br>上のフォームから入力するか、「① 本日の対局計算」から追加してください。</div>';
+    } else {
+      listEl.innerHTML = leagueSessions.map((sess, idx) => {
+        const num = leagueSessions.length - idx;
+        const isEditing = (editingSessionId === sess.id);
+        const cardCls = isEditing ? 'hist-card editing-target' : 'hist-card';
+        const entries = Object.keys(sess.members || {}).map(name => {
+          const m = sess.members[name];
+          const yk = m.yakuman > 0 ? `<span class="yk-badge">🀄×${m.yakuman}</span>` : '';
+          return `
+            <div class="hist-item">
+              <span><strong>${name}</strong> <span style="font-size:10px;color:#94a3b8;">(${m.games}戦)</span>${yk}</span>
+              <span class="${ptColorClass(m.pt)}" style="font-family:monospace;font-weight:900;">${formatPoint(m.pt)}pt</span>
+            </div>
+          `;
+        }).join('');
+
+        return `
+          <div class="${cardCls}">
+            <div class="hist-head">
+              <span><strong style="color:#fcd34d;">#${num} ${sess.date}</strong> <span style="color:#cbd5e1;">${sess.memo || ''}</span></span>
+              <div style="display:flex;gap:5px;">
+                <button type="button" class="btn-small edit" style="padding:3px 8px;" onclick="startEditDailySession(${sess.id})">✏️ 編集</button>
+                <button type="button" class="btn-small danger" style="padding:3px 8px;" onclick="deleteDailySession(${sess.id})">削除</button>
+              </div>
+            </div>
+            <div class="hist-grid">${entries}</div>
+          </div>
+        `;
+      }).join('');
+    }
+  }
+
+  function copyTodayMergeCode() {
+    if (historyRecords.length === 0) {
+      showFeedback('⚠️ 本日の履歴が0件のため合算コードを作成できません。', true);
+      return;
+    }
+    const statsMap = getTodayAggregatedStats();
+    const members = {};
+    PLAYERS.forEach(name => {
+      const st = statsMap[name];
+      if (st && (st.games > 0 || st.totalPt !== 0 || st.yakuman > 0)) {
+        members[name] = { pt: st.totalPt, games: st.games, yakuman: st.yakuman };
+      }
+    });
+    const payload = {
+      type: 'MARUYAMA_DAILY_MERGE',
+      date: getTodayDateString(),
+      memo: `他端末からの合算 (${historyRecords.length}半荘)`,
+      members: members
+    };
+    const code = btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
+    copyTextWithMessage(code, '📋 1日分の合算コードをコピーしました！LINEで集計係へ送ってください');
+  }
+
+  function exportFullLeagueBackup() {
+    const payload = {
+      type: 'MARUYAMA_FULL_BACKUP',
+      today: historyRecords,
+      sessions: leagueSessions
+    };
+    const code = btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
+    document.getElementById('merge-code-input').value = code;
+    copyTextWithMessage(code, '📋 全データ引継コードをコピーしました！');
+  }
+
+  function importMergeOrBackupCode() {
+    const raw = document.getElementById('merge-code-input').value.trim();
+    if (!raw) {
+      showDailyFeedback('⚠️ コードを入力欄に貼り付けてください。', true);
+      return;
+    }
+    try {
+      const decoded = JSON.parse(decodeURIComponent(escape(atob(raw))));
+      if (decoded && decoded.type === 'MARUYAMA_DAILY_MERGE' && decoded.members) {
+        leagueSessions.unshift({
+          id: Date.now(),
+          date: decoded.date || getTodayDateString(),
+          memo: decoded.memo || '他端末合算分',
+          members: decoded.members
+        });
+        persistAll();
+        document.getElementById('merge-code-input').value = '';
+        renderLeagueSection();
+        showDailyFeedback('✅ 他の端末の1日分データを全体累計に合算しました！', false);
+      } else if (decoded && decoded.type === 'MARUYAMA_FULL_BACKUP') {
+        if (Array.isArray(decoded.today)) historyRecords = decoded.today;
+        if (Array.isArray(decoded.sessions)) leagueSessions = decoded.sessions;
+        persistAll();
+        document.getElementById('merge-code-input').value = '';
+        renderHistorySection();
+        renderLeagueSection();
+        showDailyFeedback('✅ 全データを復元しました！', false);
+      } else {
+        showDailyFeedback('⚠️ コードの形式が正しくありません。', true);
+      }
+    } catch (e) {
+      showDailyFeedback('⚠️ コードの読み込みに失敗しました。', true);
+    }
+  }
+
+  function shareToLine(mode) {
+    let text = '';
+    if (mode === 'today') {
+      if (historyRecords.length === 0) {
+        showFeedback('⚠️ 本日の履歴がまだありません', true);
+        return;
+      }
+      const statsMap = getTodayAggregatedStats();
+      const active = Object.values(statsMap).filter(s => s.games > 0).sort((a, b) => b.totalPt - a.totalPt);
+      text = `🀄【丸山リーグ 本日の成績】(全${historyRecords.length}戦)\n` +
+        active.map((s, i) => {
+          const yk = s.yakuman > 0 ? ` [🀄役満×${s.yakuman}]` : '';
+          return `${i + 1}位 ${s.name}: ${formatPoint(s.totalPt)}pt (${s.games}戦)${yk}`;
+        }).join('\n');
+    } else {
+      if (leagueSessions.length === 0) {
+        showDailyFeedback('⚠️ 全体累計データがまだありません', true);
+        return;
+      }
+      const sorted = getLeagueTotalStats().filter(s => s.games > 0 || s.totalPt !== 0 || s.yakuman > 0);
+      text = `👑【丸山リーグ 全体累計ランキング】(${leagueSessions.length}日分集計)\n` +
+        sorted.map((s, i) => {
+          const ban = s.totalPt <= -200 ? ' 🚫【出禁】' : '';
+          const yk = s.yakuman > 0 ? ` 🀄役満:${s.yakuman}回` : '';
+          return `${i + 1}位 ${s.name}${ban}: ${formatPoint(s.totalPt)}pt (${s.games}戦)${yk}`;
+        }).join('\n');
+    }
+
+    if (navigator.share) {
+      navigator.share({ text: text }).catch(() => copyTextWithMessage(text, '📋 LINE共有テキストをコピーしました！'));
+    } else {
+      copyTextWithMessage(text, '📋 LINE共有テキストをコピーしました！トークに貼り付けてください');
+    }
+  }
+
+  function copyTextWithMessage(text, msg) {
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(text).then(() => {
+        showFeedback(msg, false);
+        showDailyFeedback(msg, false);
+      });
+    } else {
+      const inp = document.getElementById('merge-code-input');
+      if (inp) {
+        inp.value = text;
+        inp.select();
+        document.execCommand('copy');
+      }
+      showFeedback(msg, false);
+      showDailyFeedback(msg, false);
+    }
+  }
+
+  function persistAll() {
+    try {
+      localStorage.setItem(STORAGE_KEY_TODAY, JSON.stringify(historyRecords));
+      localStorage.setItem(STORAGE_KEY_SESSIONS, JSON.stringify(leagueSessions));
+    } catch (e) {}
+  }
+
+  function loadAll() {
+    try {
+      const t = localStorage.getItem(STORAGE_KEY_TODAY);
+      if (t) historyRecords = JSON.parse(t) || [];
+      const s = localStorage.getItem(STORAGE_KEY_SESSIONS);
+      if (s) leagueSessions = JSON.parse(s) || [];
+    } catch (e) {}
+  }
+
+  (function initApp() {
+    loadAll();
+    renderDailyInputForm();
+    setGameMode(4);
+    renderHistorySection();
+    renderLeagueSection();
+  })();
+</script>
+</body>
+</html>
