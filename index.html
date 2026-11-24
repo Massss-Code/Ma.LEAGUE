@@ -575,8 +575,9 @@
           </button>
           <div style="display:flex; gap:6px; margin-top:8px;">
             <button type="button" class="btn-line" style="flex:1;" onclick="shareToLine('today')">📤 本日の結果をLINE共有</button>
-            <button type="button" class="btn-small gold" style="flex:1;" onclick="shareTodayEncrypted()">🔒 合算データをLINEで送る</button>
+            <button type="button" class="btn-small gold" style="flex:1;" onclick="shareTodayToLine()">📤 合算データをLINEで送る</button>
           </div>
+          <div id="today-share-feedback-msg" class="feedback hidden"></div>
         </div>
       </section>
 
@@ -660,34 +661,24 @@
       <section class="card">
         <div class="card-header">
           <div>
-            <div class="card-title purple">🔒 暗号化LINE共有・合算／バックアップ</div>
-            <div class="card-sub">データは「共有パスワード」で暗号化してから送ります。LINEの履歴や転送で第三者の目に触れても、パスワードが無ければ中身は読めません</div>
+            <div class="card-title purple">📲 LINE共有・他端末データの合算／バックアップ</div>
+            <div class="card-sub">LINEで送られたリンクを開くだけで、データが自動で反映されます</div>
           </div>
         </div>
 
-        <!-- 共有パスワード -->
-        <div style="font-size:11px; color:#94a3b8; font-weight:800; margin-bottom:4px;">🔑 共有パスワード（メンバー全員で同じものを設定・4文字以上）</div>
-        <div style="display:flex; gap:6px;">
-          <input type="password" id="share-pw-input" class="backup-input" style="flex:1;" autocomplete="off" placeholder="例: 仲間内だけの合言葉（LINE以外の場で共有推奨）">
-          <button type="button" class="btn-small gold" onclick="saveSharePassword()">保存</button>
-        </div>
-        <div class="card-sub" style="margin-top:4px;">※パスワードはこの端末の中だけに保存され、LINEには送られません</div>
-
-        <!-- 送る -->
-        <div style="font-size:11px; color:#94a3b8; font-weight:800; margin:12px 0 4px;">📤 送る</div>
+        <div style="font-size:11px; color:#94a3b8; font-weight:800; margin:2px 0 4px;">📤 送る</div>
         <div style="display:flex; gap:6px; flex-wrap:wrap;">
-          <button type="button" class="btn-line" style="flex:1; min-width:150px;" onclick="shareTodayEncrypted()">🔒 本日の合算データをLINEで送る</button>
-          <button type="button" class="btn-small gold" style="flex:1; min-width:150px;" onclick="exportFullEncryptedFile()">🗂 全データを暗号化ファイルで送る</button>
+          <button type="button" class="btn-line" style="flex:1; min-width:150px;" onclick="shareTodayToLine()">📤 本日の合算データをLINEで送る</button>
+          <button type="button" class="btn-small gold" style="flex:1; min-width:150px;" onclick="shareFullBackupToLine()">🗂 全データをLINEで送る（引き継ぎ）</button>
         </div>
 
-        <!-- 受け取る -->
-        <div style="font-size:11px; color:#94a3b8; font-weight:800; margin:12px 0 4px;">📥 受け取る（LINEのリンクを開けば自動で読み込み画面になります）</div>
-        <input type="text" id="merge-code-input" class="backup-input" placeholder="リンク／暗号化コード（MZ1.…）／旧コードをここに貼り付け">
+        <div style="font-size:11px; color:#94a3b8; font-weight:800; margin:12px 0 4px;">📥 受け取る（リンクを開けば自動で読み込み。手動の場合はここに貼り付け）</div>
+        <input type="text" id="merge-code-input" class="backup-input" placeholder="リンク／共有コード（MZ2.…）／旧コードをここに貼り付け">
         <div style="display:flex; gap:6px; margin-top:8px; flex-wrap:wrap;">
           <button type="button" class="btn-main green-mode" style="margin-top:0; padding:9px; font-size:12px; flex:2; min-width:160px;" onclick="importMergeOrBackupCode()">
             📥 読み込んで合算・復元する
           </button>
-          <button type="button" class="btn-small" style="flex:1;" onclick="document.getElementById('share-file-input').click()">📎 ファイルから</button>
+          <button type="button" class="btn-small" style="flex:1;" onclick="document.getElementById('share-file-input').click()">📎 ファイル</button>
           <input type="file" id="share-file-input" accept=".txt,.mzk,text/plain" class="hidden" onchange="importFromFile(this)">
         </div>
         <div id="share-feedback-msg" class="feedback hidden"></div>
@@ -1591,19 +1582,21 @@
   }
 
   // ==================================================
-  // 暗号化共有（AES-GCM-256 + PBKDF2-SHA256）／ 旧コード互換
-  //   形式: "MZ1." + base64url( flag(1) | salt(16) | iv(12) | 暗号文 )
+  // LINE共有コード（圧縮のみ・パスワード不要）／ 旧コード互換
+  //   形式: "MZ2." + base64url( flag(1) | データ )  ※flag=1:圧縮あり
+  //   旧暗号化形式 "MZ1." はパスワードを尋ねて読み込めます
   // ==================================================
-  const STORAGE_KEY_SHARE_PW = 'maruyama_share_pw_v1';
   const SHARE_PBKDF2_ITER = 150000;
 
   function showShareFeedback(msg, isError) {
-    const el = document.getElementById('share-feedback-msg');
-    if (!el) return;
-    el.textContent = msg;
-    el.className = 'feedback ' + (isError ? 'banner-err' : 'banner-ok');
-    clearTimeout(el._t);
-    el._t = setTimeout(() => el.classList.add('hidden'), 6000);
+    ['share-feedback-msg', 'today-share-feedback-msg'].forEach(id => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.textContent = msg;
+      el.className = 'feedback ' + (isError ? 'banner-err' : 'banner-ok');
+      clearTimeout(el._t);
+      el._t = setTimeout(() => el.classList.add('hidden'), 8000);
+    });
   }
 
   function b64uEncode(bytes) {
@@ -1642,18 +1635,19 @@
       km, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']
     );
   }
-  async function encryptPayload(obj, pw) {
-    if (!window.crypto || !crypto.subtle) throw new Error('NO_CRYPTO');
+  async function encodePayload(obj) {
     const raw = new TextEncoder().encode(JSON.stringify(obj));
     const { flag, data } = await compressBytes(raw);
-    const salt = crypto.getRandomValues(new Uint8Array(16));
-    const iv = crypto.getRandomValues(new Uint8Array(12));
-    const key = await deriveShareKey(pw, salt);
-    const ct = new Uint8Array(await crypto.subtle.encrypt(
-      { name: 'AES-GCM', iv: iv, additionalData: new Uint8Array([flag]) }, key, data));
-    const out = new Uint8Array(1 + 16 + 12 + ct.length);
-    out[0] = flag; out.set(salt, 1); out.set(iv, 17); out.set(ct, 29);
-    return 'MZ1.' + b64uEncode(out);
+    const out = new Uint8Array(1 + data.length);
+    out[0] = flag; out.set(data, 1);
+    return 'MZ2.' + b64uEncode(out);
+  }
+  async function decodePayload(code) {
+    const buf = b64uDecode(code.slice(4));
+    if (buf.length < 2) throw new Error('BAD_FORMAT');
+    let data = buf.slice(1);
+    if (buf[0] === 1) data = await decompressBytes(data);
+    return JSON.parse(new TextDecoder().decode(data));
   }
   async function decryptPayload(code, pw) {
     if (!window.crypto || !crypto.subtle) throw new Error('NO_CRYPTO');
@@ -1670,34 +1664,9 @@
     return JSON.parse(new TextDecoder().decode(plain));
   }
 
-  // ---- 共有パスワード管理（この端末のlocalStorageにのみ保存） ----
-  function getSharePassword() {
-    const typed = (document.getElementById('share-pw-input').value || '').trim();
-    let pw = typed;
-    if (!pw) { try { pw = localStorage.getItem(STORAGE_KEY_SHARE_PW) || ''; } catch (e) {} }
-    return pw.length >= 4 ? pw : null;
-  }
-  function saveSharePassword() {
-    const pw = (document.getElementById('share-pw-input').value || '').trim();
-    if (pw.length < 4) { showShareFeedback('⚠️ パスワードは4文字以上で入力してください', true); return; }
-    try { localStorage.setItem(STORAGE_KEY_SHARE_PW, pw); } catch (e) {}
-    showShareFeedback('✅ 共有パスワードを保存しました（この端末内のみ）', false);
-  }
-  function rememberPasswordIfTyped(pw) {
-    try { localStorage.setItem(STORAGE_KEY_SHARE_PW, pw); } catch (e) {}
-    const inp = document.getElementById('share-pw-input');
-    if (inp) inp.value = '';
-  }
-  function needPasswordNotice() {
-    switchMainPage('league');
-    showShareFeedback('⚠️ 先に「共有パスワード」を入力して保存してください（メンバー全員で同じもの）', true);
-    const inp = document.getElementById('share-pw-input');
-    if (inp) { inp.focus(); inp.scrollIntoView({ block: 'center' }); }
-  }
-  function cryptoErrorMessage(e) {
-    if (e && e.message === 'NO_CRYPTO') return '⚠️ この環境では暗号化が使えません（https のページで開いてください）';
+  function codeErrorMessage(e) {
     if (e && e.message === 'WRONG_PW') return '⚠️ パスワードが違うか、データが壊れています';
-    return '⚠️ コードの読み込みに失敗しました';
+    return '⚠️ コードの読み込みに失敗しました（リンクが途中で切れていないか確認してください）';
   }
 
   // ---- LINEへ送信 ----
@@ -1706,9 +1675,10 @@
       try { await navigator.share({ text: text }); return; }
       catch (e) { if (e && e.name === 'AbortError') return; }
     }
+    // 共有シートが使えない場合：コピー＋LINE共有URLへ移動（ポップアップ扱いにならない）
     try { if (navigator.clipboard) await navigator.clipboard.writeText(text); } catch (e) {}
-    window.open('https://line.me/R/share?text=' + encodeURIComponent(text), '_blank');
-    showShareFeedback('📋 コピーもしました。LINEが開かない場合はトークに貼り付けてください', false);
+    showShareFeedback('📋 コピーしました。LINEが開かない場合はトークに貼り付けてください', false);
+    location.href = 'https://line.me/R/share?text=' + encodeURIComponent(text);
   }
   function buildShareUrl(code) {
     if (/^https?:$/.test(location.protocol)) return location.origin + location.pathname + '#mz=' + code;
@@ -1718,14 +1688,12 @@
     return Array.from(crypto.getRandomValues(new Uint8Array(6))).map(b => b.toString(16).padStart(2, '0')).join('');
   }
 
-  // ---- 本日分を暗号化してLINE共有 ----
-  async function shareTodayEncrypted() {
+  // ---- 本日分をLINE共有 ----
+  async function shareTodayToLine() {
     if (historyRecords.length === 0) {
-      showFeedback('⚠️ 本日の履歴が0件のため共有できません。', true);
+      showShareFeedback('⚠️ 本日の履歴が0件のため共有できません。先に対局を記録してください。', true);
       return;
     }
-    const pw = getSharePassword();
-    if (!pw) { needPasswordNotice(); return; }
     const statsMap = getTodayAggregatedStats();
     const members = {};
     PLAYERS.forEach(name => {
@@ -1740,33 +1708,37 @@
       memo: `他端末からの合算 (${historyRecords.length}半荘)`, members: members
     };
     try {
-      const code = await encryptPayload(payload, pw);
-      rememberPasswordIfTyped(pw);
+      const code = await encodePayload(payload);
       const url = buildShareUrl(code);
-      const text = `🀄丸山リーグ ${date} の合算データ（🔒暗号化済み）\n` +
-        (url ? `↓リンクを開いて共有パスワードで読み込み\n${url}`
+      const text = `🀄丸山リーグ ${date} の合算データ\n` +
+        (url ? `↓リンクを開くと自動で反映されます\n${url}`
              : `↓アプリの「受け取る」欄に貼り付けて読み込み\n${code}`);
       await sendToLine(text);
     } catch (e) {
-      const msg = cryptoErrorMessage(e);
-      showFeedback(msg, true); showShareFeedback(msg, true);
+      showShareFeedback('⚠️ 共有データの作成に失敗しました', true);
     }
   }
 
-  // ---- 全データを暗号化ファイルで共有 ----
-  async function exportFullEncryptedFile() {
-    const pw = getSharePassword();
-    if (!pw) { needPasswordNotice(); return; }
+  // ---- 全データをLINE共有（リンクで引き継ぎ。長すぎる場合のみファイル） ----
+  const SHARE_TEXT_MAX = 8000; // LINE 1通の上限(約1万文字)に余裕を持たせる
+  async function shareFullBackupToLine() {
     try {
-      const code = await encryptPayload(
-        { type: 'MARUYAMA_FULL_BACKUP', today: historyRecords, sessions: leagueSessions }, pw);
-      rememberPasswordIfTyped(pw);
+      const code = await encodePayload({ type: 'MARUYAMA_FULL_BACKUP', today: historyRecords, sessions: leagueSessions });
+      const url = buildShareUrl(code);
+      const text = `🀄丸山リーグ 全データ引き継ぎ（${getTodayDateString()}）\n` +
+        (url ? `↓リンクを開くと、この端末のデータが全て置き換わります\n${url}`
+             : `↓アプリの「受け取る」欄に貼り付けて読み込み\n${code}`);
+      if (text.length <= SHARE_TEXT_MAX) {
+        await sendToLine(text);
+        return;
+      }
+      // データが多くて1通に収まらない場合のみファイルで送る
       const fname = `maruyama_league_backup_${getTodayDateString()}.txt`;
       const file = new File([code], fname, { type: 'text/plain' });
       if (navigator.canShare && navigator.canShare({ files: [file] })) {
         try {
-          await navigator.share({ files: [file], title: '丸山リーグ 暗号化バックアップ' });
-          showShareFeedback('✅ 暗号化ファイルを共有しました（開くにはパスワードが必要です）', false);
+          await navigator.share({ files: [file], title: '丸山リーグ バックアップ' });
+          showShareFeedback('データが大きいためファイルで共有しました。受け取る側は「📎 ファイル」から読み込みます', false);
           return;
         } catch (e) { if (e && e.name === 'AbortError') return; }
       }
@@ -1775,9 +1747,9 @@
       a.download = fname;
       document.body.appendChild(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(a.href), 3000);
-      showShareFeedback('💾 暗号化ファイルを保存しました。LINEのトークに添付して送ってください', false);
+      showShareFeedback('データが大きいためファイルを保存しました。LINEに添付して送ってください', false);
     } catch (e) {
-      showShareFeedback(cryptoErrorMessage(e), true);
+      showShareFeedback('⚠️ 共有データの作成に失敗しました', true);
     }
   }
 
@@ -1850,21 +1822,24 @@
       return;
     }
 
-    // 1. 暗号化コード（リンク内 #mz=MZ1.… も可）
-    const enc = raw.match(/MZ1\.[A-Za-z0-9_-]+/);
+    // 1. 共有コード（リンク内 #mz=MZ2.… も可）／旧暗号化コード MZ1.
+    const enc = raw.match(/MZ[12]\.[A-Za-z0-9_-]+/);
     if (enc) {
-      const pw = getSharePassword();
-      if (!pw) { needPasswordNotice(); return; }
       let decoded;
       try {
-        decoded = await decryptPayload(enc[0], pw);
+        if (enc[0].startsWith('MZ1.')) {
+          const pw = (prompt('このデータは旧形式の暗号化データです。パスワードを入力してください') || '').trim();
+          if (!pw) return;
+          decoded = await decryptPayload(enc[0], pw);
+        } else {
+          decoded = await decodePayload(enc[0]);
+        }
       } catch (e) {
-        showShareFeedback(cryptoErrorMessage(e), true);
+        showShareFeedback(codeErrorMessage(e), true);
         return;
       }
       const r = applyPayload(decoded, opts);
       if (r === 'ok') {
-        rememberPasswordIfTyped(pw);
         inputEl.value = '';
         showShareFeedback(decoded.type === 'MARUYAMA_FULL_BACKUP' ? '✅ 全データを復元しました！' : '✅ 合算データを全体累計に追加しました！', false);
       } else if (r === 'cancel') {
@@ -1925,19 +1900,12 @@
 
   // ---- LINEのリンク（#mz=...）から開いた場合の自動読み込み ----
   async function handleIncomingLink() {
-    const m = location.hash.match(/^#mz=(MZ1\.[A-Za-z0-9_-]+)/);
+    const m = location.hash.match(/^#mz=(MZ[12]\.[A-Za-z0-9_-]+)/);
     if (!m) return;
-    const code = m[1];
     try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
     switchMainPage('league');
-    document.getElementById('merge-code-input').value = code;
-    if (getSharePassword()) {
-      await importMergeOrBackupCode({ fromLink: true });
-    } else {
-      showShareFeedback('🔒 暗号化データを受け取りました。共有パスワードを入力して「読み込んで合算・復元する」を押してください', false);
-      const inp = document.getElementById('share-pw-input');
-      if (inp) inp.focus();
-    }
+    document.getElementById('merge-code-input').value = m[1];
+    await importMergeOrBackupCode({ fromLink: true });
   }
   window.addEventListener('hashchange', handleIncomingLink);
 
